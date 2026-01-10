@@ -3,6 +3,7 @@ from datetime import date
 from flask import Flask, render_template, redirect, url_for
 from flask_caching import Cache
 from pathlib import Path
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 import solr_client as solr
 
@@ -30,6 +31,8 @@ APP_VERSION = os.getenv("APP_VERSION") or read_version()
 
 def create_app():
     app = Flask(__name__)
+    # чтобы Flask/werkzeug учитывал заголовки от прокси (proto/host/prefix)
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1, x_prefix=1)
 
     # ---- Cache ----
     app.config["CACHE_TYPE"] = os.getenv("CACHE_TYPE", "SimpleCache")

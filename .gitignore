@@ -1,0 +1,66 @@
+# ---------------------------
+# Python
+# ---------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# ---------------------------
+# Virtualenv
+# ---------------------------
+venv/
+.venv/
+
+# ---------------------------
+# Runtime / cache / logs
+# ---------------------------
+*.log
+instance/
+cache/
+flask_session/
+.pytest_cache/
+
+# ---------------------------
+# Environment / secrets
+# ---------------------------
+.env
+.env.*
+secrets*
+*.secret
+
+# ---------------------------
+# IDE / OS
+# ---------------------------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ---------------------------
+# Flask / Gunicorn
+# ---------------------------
+gunicorn.pid
+*.sock
+
+# ---------------------------
+# Bytecode from running server
+# ---------------------------
+*.pyc
+
+# ---------------------------
+# Coverage / tests
+# ---------------------------
+.coverage
+htmlcov/
+
+# ---------------------------
+# Local overrides
+# ---------------------------
+config.local.py
+local_settings.py
