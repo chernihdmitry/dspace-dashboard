@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+{% block page_title %}{{ REPO_NAME }} — Загальний стан репозитарію{% endblock %}
+
+{% block content %}
+
+<div class="row g-3">
+  <!-- KPI -->
+  <div class="col-lg-4">
+    <div class="card card-soft h-100">
+      <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between">
+          <div class="text-secondary small">📚 Кількість документів у репозитарії</div>
+          <span class="badge text-bg-light">live</span>
+        </div>
+
+        <div class="display-5 fw-bold mt-1">{{ data.total_docs|fmt }}</div>
+
+        <div class="text-secondary small">👤 Профілі дослідників (entity.type=Person)</div>
+        <div class="h2 fw-semibold mb-0">{{ data.person_profiles|fmt }}</div>
+
+        <div class="d-flex gap-3 flex-wrap mt-2 small text-secondary">
+          <div>Перше завантаження документа: <span class="fw-medium">{{ (data.first_date or "—") }}</span></div>
+          <div>Останнє завантаження документа: <span class="fw-medium">{{ (data.last_date or "—") }}</span></div>
+          <div>+{{ new_7d|fmt }} за 7 днів</div>
+        </div>
+
+      <div class="d-flex gap-2 flex-wrap small mt-3">
+        <span class="badge text-bg-light">Сьогодні: <b>{{ today_cnt|fmt }}</b></span>
+        <span class="badge text-bg-light">Вчора: <b>{{ yesterday_cnt|fmt }}</b></span>
+        <span class="badge text-bg-light">Середнє: <b>{{ spark_avg }}</b></span>
+        <span class="badge text-bg-light">Сума 30 днів: <b>{{ spark_sum|fmt }}</b></span>
+      </div>
+
+
+        <div class="mt-3" style="height:160px">
+          <div class="text-secondary small mb-2">Останні 30 днів (нові надходження)</div>
+          <canvas id="spark"></canvas>
+        </div>
+
+        <hr class="my-3">
+
+
+
+        <div class="mt-3 small">
+          <div class="text-secondary mb-1">URLs:</div>
+
+          <div class="d-flex flex-column gap-1">
+
+            <div>
+              <span class="text-secondary">UI:</span>
+              <a href="{{ ui_url }}" target="_blank" class="link-primary">
+                {{ ui_url }}
+              </a>
+            </div>
+
+            <div>
+              <span class="text-secondary">REST:</span>
+              <a href="{{ server_url }}" target="_blank" class="link-primary">
+                {{ server_url }}
+              </a>
+            </div>
+
+            <div>
+              <span class="text-secondary">OAI-PMH:</span>
+              <a href="{{ oai_url }}" target="_blank" class="link-primary">
+                {{ oai_url }}
+              </a>
+            </div>
+
+            <div>
+              <span class="text-secondary">Version:</span>
+              <span class="fw-medium">{{ dspace_version }}</span>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Languages -->
+  <div class="col-lg-4">
+    <div class="card card-soft h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="text-secondary small">Мови (dc.language.iso)</div>
+        </div>
+
+        <div class="mt-3 langs-scroll">
+          {% for it in langs_ui %}
+            <div class="mb-2">
+              <div class="d-flex justify-content-between small">
+                <div class="text-truncate pe-2">
+                  <span class="fw-semibold">{{ it.key }}</span>
+                  <span class="text-secondary ms-1">
+                    {% if it.pct < 0.1 and it.pct > 0 %}&lt;0.1%
+                    {% else %}{{ it.pct|round(1) }}%
+                    {% endif %}
+                  </span>
+                </div>
+                <div class="fw-semibold">{{ it.count|fmt }}</div>
+              </div>
+              <div class="progress progress-thin">
+                <div class="progress-bar" style="width: {{ it.pct }}%"></div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Types -->
+  <div class="col-lg-4">
+    <div class="card card-soft h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="text-secondary small">Типи (dc.type)</div>
+        </div>
+
+        <div class="mt-3 types-scroll">
+          {% for it in types_ui %}
+            <div class="mb-2">
+              <div class="d-flex justify-content-between small">
+                <div class="text-truncate pe-2">
+                  <span class="fw-semibold">{{ it.key }}</span>
+                  <span class="text-secondary ms-1">
+                    {% if it.pct < 0.1 and it.pct > 0 %}&lt;0.1%
+                    {% else %}{{ it.pct|round(1) }}%
+                    {% endif %}
+                  </span>
+                </div>
+                <div class="fw-semibold">{{ it.count|fmt }}</div>
+              </div>
+              <div class="progress progress-thin">
+                <div class="progress-bar" style="width: {{ it.pct }}%"></div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const sparkLabels = {{ spark_labels|tojson }};
+  const sparkValues = {{ spark_values|tojson }};
+  const avg = {{ spark_avg|tojson }};
+
+  // плагин: линия среднего (горизонтальная), без внешних зависимостей
+  const avgLine = {
+    id: 'avgLine',
+    afterDatasetsDraw(chart, args, pluginOptions) {
+      const { ctx, chartArea, scales } = chart;
+      if (!chartArea || !scales?.y) return;
+
+      const y = scales.y.getPixelForValue(avg);
+
+      ctx.save();
+      ctx.setLineDash([6, 6]);
+      ctx.lineWidth = 1;
+      // НЕ задаём цвет — берём текущий default strokeStyle
+      ctx.beginPath();
+      ctx.moveTo(chartArea.left, y);
+      ctx.lineTo(chartArea.right, y);
+      ctx.stroke();
+      ctx.restore();
+    }
+  };
+
+  new Chart(document.getElementById('spark'), {
+    type: 'bar',
+    data: {
+      labels: sparkLabels,
+      datasets: [{
+        label: 'Надходження',
+        data: sparkValues,
+        borderWidth: 0,
+        borderRadius: 6,
+        barPercentage: 0.9,
+        categoryPercentage: 0.9
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: (items) => items?.[0]?.label ?? '',
+            label: (item) => ` Надходження: ${item.formattedValue}`
+          }
+        }
+      },
+      scales: {
+        x: {
+          display: true,
+          grid: { display: false },
+          ticks: {
+            padding: 14,          // <-- сдвигает подписи вниз
+            maxTicksLimit: 8,
+            callback: function(value) {
+              const s = this.getLabelForValue(value); // YYYY-MM-DD
+              return s ? `${s.slice(8,10)}.${s.slice(5,7)}` : '';
+            }
+          }
+        },
+        y: {
+          beginAtZero: true,
+          ticks: { maxTicksLimit: 4 },
+          grid: { drawBorder: false }
+        }
+      }
+    },
+    plugins: [avgLine]
+  });
+</script>
+
+{% endblock %}

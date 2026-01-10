@@ -1,0 +1,386 @@
+import os
+import json
+import requests
+from datetime import datetime, date, timedelta
+from dateutil.relativedelta import relativedelta
+
+
+# -----------------------------
+# Config
+# -----------------------------
+
+SOLR_URL = os.getenv("SOLR_URL", "http://localhost:8983/solr").rstrip("/")
+SOLR_TIMEOUT = float(os.getenv("SOLR_TIMEOUT", "8"))
+
+SOLR_SEARCH_URL = f"{SOLR_URL}/search/select"
+SOLR_STATS_URL  = f"{SOLR_URL}/statistics/select"
+
+# ВАЖНО:
+# requests НЕ умеет ходить по относительным URL типа "/server/api".
+# Поэтому либо задай DSPACE_API_URL полностью, либо задай APP_BASE_URL (scheme+host),
+# и тогда /server/api станет абсолютным.
+APP_BASE_URL = os.getenv("APP_BASE_URL", "").rstrip("/")  # например https://dspace9-test.dspace.com.ua
+DSPACE_API_ROOT = os.getenv("DSPACE_API_ROOT", "/server/api")  # путь или полный URL
+
+
+# -----------------------------
+# HTTP helpers
+# -----------------------------
+
+def _get(url: str, params: dict):
+    r = requests.get(url, params=params, timeout=SOLR_TIMEOUT)
+    r.raise_for_status()
+    return r.json()
+
+
+def iso_z(dt: datetime) -> str:
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def month_range(year: int, month: int):
+    start = datetime(year, month, 1, 0, 0, 0)
+    end = (start + relativedelta(months=1)) - relativedelta(seconds=1)
+    return start, end
+
+
+# -----------------------------
+# DSpace REST root info
+# -----------------------------
+
+def dspace_root_info():
+    """
+    Возвращает JSON с /server/api (root).
+    Требует абсолютный URL. Варианты:
+      - DSPACE_API_ROOT="https://host/server/api"
+      - APP_BASE_URL="https://host" и DSPACE_API_ROOT="/server/api"
+    """
+    if DSPACE_API_ROOT.startswith("http://") or DSPACE_API_ROOT.startswith("https://"):
+        url = DSPACE_API_ROOT
+    else:
+        if not APP_BASE_URL:
+            raise RuntimeError(
+                "DSPACE_API_ROOT is relative, but APP_BASE_URL is not set. "
+                "Set APP_BASE_URL=https://your-host or set DSPACE_API_ROOT as full URL."
+            )
+        url = f"{APP_BASE_URL}{DSPACE_API_ROOT}"
+
+    r = requests.get(url, timeout=6)
+    r.raise_for_status()
+    return r.json()
+
+
+# -----------------------------
+# Repository totals (info page)
+# -----------------------------
+
+def repo_totals():
+    main_docs_query = {
+        "q": "archived:true",
+        "fq": [
+            "discoverable:true",
+            "withdrawn:false",
+            "-entityType:Person",
+        ],
+        "rows": 0,
+        "q.op": "AND",
+    }
+    person_docs_query = {
+        "q": "archived:true",
+        "fq": [
+            "discoverable:true",
+            "withdrawn:false",
+            "entityType:Person",
+        ],
+        "rows": 0,
+        "q.op": "AND",
+    }
+
+    total_docs = _get(SOLR_SEARCH_URL, main_docs_query)["response"]["numFound"]
+    person_profiles = _get(SOLR_SEARCH_URL, person_docs_query)["response"]["numFound"]
+
+    first_params = {"q": "archived:true", "sort": "dc.date.accessioned_dt asc", "rows": 2}
+    last_params  = {"q": "archived:true", "sort": "dc.date.accessioned_dt desc", "rows": 1}
+
+    first_json = _get(SOLR_SEARCH_URL, first_params)
+    last_json  = _get(SOLR_SEARCH_URL, last_params)
+
+    docs_first = first_json.get("response", {}).get("docs", [])
+    docs_last  = last_json.get("response", {}).get("docs", [])
+
+    first_date = (
+        docs_first[1].get("dc.date.accessioned_dt") if len(docs_first) > 1 else
+        docs_first[0].get("dc.date.accessioned_dt") if len(docs_first) == 1 else
+        None
+    )
+    last_date = docs_last[0].get("dc.date.accessioned_dt") if docs_last else None
+
+    facet_params = {
+        "q": "*:*",
+        "rows": 0,
+        "facet": "true",
+        "facet.field": ["dc.language.iso", "dc.type"],
+        "facet.limit": 200,
+        "facet.mincount": 1,
+    }
+    f = _get(SOLR_SEARCH_URL, facet_params).get("facet_counts", {}).get("facet_fields", {})
+
+    def flat_to_dict(lst):
+        out = {}
+        if not lst:
+            return out
+        for i in range(0, len(lst), 2):
+            out[str(lst[i])] = int(lst[i + 1])
+        return out
+
+    return {
+        "total_docs": int(total_docs),
+        "person_profiles": int(person_profiles),
+        "first_date": first_date,
+        "last_date": last_date,
+        "langs": flat_to_dict(f.get("dc.language.iso")),
+        "types": flat_to_dict(f.get("dc.type")),
+    }
+
+
+# -----------------------------
+# Submitted: last days + sparkline
+# -----------------------------
+
+def submitted_count(start_dt: datetime, end_dt: datetime) -> int:
+    params = {
+        "q": "archived:true",
+        "fq": [
+            "-entityType:Person",
+            "discoverable:true",
+            "withdrawn:false",
+            f"dc.date.accessioned_dt:[{iso_z(start_dt)} TO {iso_z(end_dt)}]",
+        ],
+        "rows": 0,
+        "q.op": "AND",
+        "indent": "true",
+    }
+    return int(_get(SOLR_SEARCH_URL, params)["response"]["numFound"])
+
+
+def submitted_last_days(days: int = 7) -> int:
+    end = datetime.utcnow().replace(hour=23, minute=59, second=59, microsecond=0)
+    start = end - timedelta(days=days - 1)
+    return submitted_count(start, end)
+
+
+def submitted_sparkline(days: int = 30):
+    end = datetime.utcnow().replace(hour=23, minute=59, second=59, microsecond=0)
+    start = (end - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    facet = {
+        "by_day": {
+            "type": "range",
+            "field": "dc.date.accessioned_dt",
+            "start": iso_z(start),
+            "end": iso_z(end + relativedelta(seconds=1)),  # exclusive end
+            "gap": "+1DAY",
+        }
+    }
+
+    params = {
+        "q": "archived:true",
+        "fq": [
+            "-entityType:Person",
+            "discoverable:true",
+            "withdrawn:false",
+            f"dc.date.accessioned_dt:[{iso_z(start)} TO {iso_z(end)}]",
+        ],
+        "rows": 0,
+        "json.facet": json.dumps(facet),
+    }
+
+    j = _get(SOLR_SEARCH_URL, params)
+    buckets = j.get("facets", {}).get("by_day", {}).get("buckets", [])
+
+    labels, values = [], []
+    for b in buckets:
+        val = b.get("val", "")
+        labels.append(val[:10])
+        values.append(int(b.get("count", 0)))
+    return labels, values
+
+
+# -----------------------------
+# Statistics core: downloads/views
+# -----------------------------
+
+def stats_count(q: str, fq: list[str]) -> int:
+    params = {"q": q, "fq": fq, "rows": 0, "q.op": "AND", "indent": "true"}
+    return int(_get(SOLR_STATS_URL, params)["response"]["numFound"])
+
+
+def downloads_count(start_dt: datetime, end_dt: datetime) -> int:
+    return stats_count(
+        q="type:0",
+        fq=[
+            "bundleName:ORIGINAL",
+            "isBot:false",
+            "statistics_type:view",
+            f"time:[{iso_z(start_dt)} TO {iso_z(end_dt)}]",
+        ],
+    )
+
+
+def views_count(start_dt: datetime, end_dt: datetime) -> int:
+    return stats_count(
+        q="type:2",
+        fq=[
+            "isBot:false",
+            "statistics_type:view",
+            f"time:[{iso_z(start_dt)} TO {iso_z(end_dt)}]",
+        ],
+    )
+
+
+# -----------------------------
+# Month daily stats (3 GET with json.facet)
+# -----------------------------
+
+def month_daily_stats(year: int, month: int):
+    start, end = month_range(year, month)
+    end_excl = end + relativedelta(seconds=1)
+
+    def _range_facet(field: str):
+        return {
+            "by_day": {
+                "type": "range",
+                "field": field,
+                "start": iso_z(start),
+                "end": iso_z(end_excl),
+                "gap": "+1DAY",
+            }
+        }
+
+    # Submitted
+    params_sub = {
+        "q": "archived:true",
+        "fq": [
+            "-entityType:Person",
+            "discoverable:true",
+            "withdrawn:false",
+            f"dc.date.accessioned_dt:[{iso_z(start)} TO {iso_z(end)}]",
+        ],
+        "rows": 0,
+        "json.facet": json.dumps(_range_facet("dc.date.accessioned_dt")),
+    }
+    buckets_sub = _get(SOLR_SEARCH_URL, params_sub).get("facets", {}).get("by_day", {}).get("buckets", [])
+
+    # Views
+    params_views = {
+        "q": "type:2",
+        "fq": [
+            "isBot:false",
+            "statistics_type:view",
+            f"time:[{iso_z(start)} TO {iso_z(end)}]",
+        ],
+        "rows": 0,
+        "json.facet": json.dumps(_range_facet("time")),
+    }
+    buckets_views = _get(SOLR_STATS_URL, params_views).get("facets", {}).get("by_day", {}).get("buckets", [])
+
+    # Downloads
+    params_down = {
+        "q": "type:0",
+        "fq": [
+            "bundleName:ORIGINAL",
+            "isBot:false",
+            "statistics_type:view",
+            f"time:[{iso_z(start)} TO {iso_z(end)}]",
+        ],
+        "rows": 0,
+        "json.facet": json.dumps(_range_facet("time")),
+    }
+    buckets_down = _get(SOLR_STATS_URL, params_down).get("facets", {}).get("by_day", {}).get("buckets", [])
+
+    def buckets_to_map(buckets):
+        mp = {}
+        for b in buckets or []:
+            val = b.get("val")
+            if isinstance(val, str) and len(val) >= 10:
+                mp[val[:10]] = int(b.get("count", 0))
+        return mp
+
+    mp_sub = buckets_to_map(buckets_sub)
+    mp_views = buckets_to_map(buckets_views)
+    mp_down = buckets_to_map(buckets_down)
+
+    out = []
+    cur = start
+    while cur <= end:
+        key = cur.strftime("%Y-%m-%d")
+        out.append({
+            "day": int(cur.strftime("%d")),
+            "submitted": mp_sub.get(key, 0),
+            "views": mp_views.get(key, 0),
+            "downloads": mp_down.get(key, 0),
+        })
+        cur = cur + relativedelta(days=1)
+
+    return out
+
+
+# -----------------------------
+# Monthly stats table
+# -----------------------------
+
+def monthly_stats(start_year: int, start_month: int):
+    today = date.today()
+    cur = datetime(start_year, start_month, 1)
+    end = datetime(today.year, today.month, 1)
+
+    rows = []
+    while cur <= end:
+        y, m = cur.year, cur.month
+        start_dt, end_dt = month_range(y, m)
+
+        rows.append({
+            "year": y,
+            "month": m,
+            "submitted": submitted_count(start_dt, end_dt),
+            "views": views_count(start_dt, end_dt),
+            "downloads": downloads_count(start_dt, end_dt),
+        })
+
+        cur = cur + relativedelta(months=1)
+
+    return rows
+
+
+# -----------------------------
+# Submitters (terms facet)
+# -----------------------------
+
+def submitters_for_month(year: int, month: int, limit: int = 200):
+    start, end = month_range(year, month)
+
+    facet = {
+        "submitters": {
+            "type": "terms",
+            "field": "submitter_keyword",
+            "limit": limit,
+            "mincount": 1,
+            "sort": "count desc",
+        }
+    }
+
+    params = {
+        "q": "archived:true",
+        "fq": [
+            "-entityType:Person",
+            "discoverable:true",
+            "withdrawn:false",
+            f"dc.date.accessioned_dt:[{iso_z(start)} TO {iso_z(end)}]",
+        ],
+        "rows": 0,
+        "json.facet": json.dumps(facet),
+    }
+
+    j = _get(SOLR_SEARCH_URL, params)
+    buckets = j.get("facets", {}).get("submitters", {}).get("buckets", [])
+    # унифицируем под шаблоны: key/count
+    return [{"submitter": b.get("val", ""), "count": int(b.get("count", 0))} for b in buckets]

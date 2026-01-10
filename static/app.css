@@ -1,0 +1,60 @@
+:root{
+  --card-border: rgba(15, 23, 42, .08);
+  --shadow: 0 10px 30px rgba(15, 23, 42, .06);
+}
+
+body{ background: #f6f8fb; }
+
+.brand-dot{
+  width: 10px; height: 10px; border-radius: 50%;
+  display:inline-block; margin-right:10px;
+  background: #0d6efd;
+  box-shadow: 0 0 0 6px rgba(13,110,253,.12);
+  vertical-align: middle;
+}
+
+.card-soft{
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+}
+
+.list-compact > div{
+  padding: 6px 0;
+  border-bottom: 1px dashed rgba(15,23,42,.10);
+}
+.list-compact > div:last-child{ border-bottom: 0; }
+
+.progress-thin{
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(15,23,42,.08);
+}
+.progress-thin .progress-bar{
+  border-radius: 999px;
+}
+
+.langs-scroll { max-height: 520px; overflow: auto; padding-right: 6px; }
+
+.types-scroll { max-height: 520px; overflow: auto; padding-right: 6px; }
+
+.navbar .nav-link {
+  padding: 6px 14px;
+  border-radius: 10px;
+  margin-left: 6px;
+  color: #374151 !important;        /* slate-700 */
+  border: 1px solid transparent;
+  transition: all .15s ease;
+}
+
+.navbar .nav-link:hover {
+  background: #f1f5f9;              /* slate-100 */
+  border-color: #e5e7eb;
+}
+
+.navbar .nav-link.active {
+  background: #e0e7ff;              /* indigo-100 */
+  color: #1e40af !important;        /* indigo-800 */
+  border-color: #c7d2fe;
+  font-weight: 600;
+}

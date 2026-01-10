@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block page_title %}Статистика завантажень{% endblock %}
+
+{% block content %}
+<div class="card card-soft">
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table align-middle mb-0">
+        <thead>
+          <tr class="text-secondary small">
+            <th style="width: 180px">Місяць</th>
+            <th>Відправлено</th>
+            <th>Перегляди</th>
+            <th>Завантаження</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td>
+              <a class="link-underline link-underline-opacity-0"
+                 href="{{ url_for('month_details', year=r.year, month=r.month) }}">
+                {{ r.month_name }} {{ r.year }}
+              </a>
+            </td>
+            <td class="fw-semibold">{{ r.submitted }}</td>
+            <td class="fw-semibold">{{ r.views }}</td>
+            <td class="fw-semibold">{{ r.downloads }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="text-secondary">Немає даних</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
