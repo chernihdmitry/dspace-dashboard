@@ -45,9 +45,13 @@
     e.preventDefault();
     const y = document.getElementById('yearSel').value;
     const m = document.getElementById('monthSel').value;
-    window.location.href = `/submitters/${y}/${m}`;
+
+    // Берём корректный base URL (с префиксом /dspace-dashboard, если он есть)
+    const base = {{ url_for('submitters_month', year=0, month=0)|tojson }};
+    window.location.href = base.replace('/0/0', `/${y}/${m}`);
   });
 </script>
+
 
 <div class="text-secondary small mb-2">
   Період: <span class="fw-semibold">{{ month_name }} {{ year }}</span>
