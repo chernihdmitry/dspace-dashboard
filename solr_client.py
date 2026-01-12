@@ -210,23 +210,44 @@ def submitted_sparkline(days: int = 30):
 # -----------------------------
 
 def stats_count(q: str, fq: list[str]) -> int:
-    params = {"q": q, "fq": fq, "rows": 0, "q.op": "AND", "indent": "true"}
+    params = {
+        "q": q,
+        "fq": fq,
+        "rows": 0,
+        "q.op": "AND",
+        "wt": "json",
+    }
     return int(_get(SOLR_STATS_URL, params)["response"]["numFound"])
 
 
 def downloads_count(start_dt: datetime, end_dt: datetime) -> int:
-    return stats_count(
-        q="type:0",
-        fq=[
-            "bundleName:ORIGINAL",
-            "isBot:false",
-            "statistics_type:view",
-            f"time:[{iso_z(start_dt)} TO {iso_z(end_dt)}]",
-        ],
-    )
+    """
+    DSpace Solr statistics core.
+    Usually:
+      - downloads are bitstream views: type:0 + bundleName:"ORIGINAL" + statistics_type:view
+    But some setups store downloads under statistics_type:download.
+    We'll try view first, then fallback to download.
+    """
+    fq_common = [
+        'bundleName:"ORIGINAL"',  # IMPORTANT: multiValued, needs quotes (Windows особенно)
+        "isBot:false",
+        f"time:[{iso_z(start_dt)} TO {iso_z(end_dt)}]",
+    ]
+
+    # Most common (your curl подтверждает, что statistics_type=view есть)
+    cnt = stats_count(q="type:0", fq=fq_common + ["statistics_type:view"])
+    if cnt > 0:
+        return cnt
+
+    # Fallback for some DSpace installs
+    cnt2 = stats_count(q="type:0", fq=fq_common + ["statistics_type:download"])
+    return cnt2
 
 
 def views_count(start_dt: datetime, end_dt: datetime) -> int:
+    """
+    Item page views (usually type:2) in statistics core.
+    """
     return stats_count(
         q="type:2",
         fq=[
@@ -235,6 +256,7 @@ def views_count(start_dt: datetime, end_dt: datetime) -> int:
             f"time:[{iso_z(start_dt)} TO {iso_z(end_dt)}]",
         ],
     )
+
 
 
 # -----------------------------
