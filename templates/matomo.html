@@ -358,7 +358,7 @@ async function loadMatomoData(date = 'yesterday') {
   try {
     // Перевіряємо чи потрібно фільтрувати технічний трафік
     const filterTechnical = document.getElementById('filterTechnical').checked;
-    let url = `/api/matomo/summary?date=${encodeURIComponent(date)}`;
+    let url = `{{ url_for('matomo_summary_api') }}?date=${encodeURIComponent(date)}`;
     if (filterTechnical) {
       url += '&exclude_technical=1';
     }
