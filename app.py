@@ -1,11 +1,19 @@
 import os
 from datetime import date
-from flask import Flask, render_template, redirect, url_for
+from flask import Flask, render_template, redirect, url_for, jsonify, request
 from flask_caching import Cache
 from pathlib import Path
 from werkzeug.middleware.proxy_fix import ProxyFix
+from dotenv import load_dotenv
+
+# Загрузка переменных окружения из файлов
+# Приоритет: .env в текущей директории, затем /etc/default/dspace-dashboard
+if os.path.exists("/etc/default/dspace-dashboard"):
+    load_dotenv("/etc/default/dspace-dashboard")
+load_dotenv()  # загружает .env если есть
 
 import solr_client as solr
+import matomo_client as matomo
 
 APP_TITLE = os.getenv("APP_TITLE", "DSpace Live Dashboard")
 REPO_NAME = os.getenv("REPO_NAME", "iRDPU")
@@ -55,6 +63,7 @@ def create_app():
             "REPO_NAME": REPO_NAME,
             "APP_VERSION": APP_VERSION,
             "today_str": date.today().strftime("%d.%m.%Y"),
+            "matomo_configured": matomo.is_configured(),
         }
 
     # ----------------------------
@@ -219,6 +228,70 @@ def create_app():
     @app.get("/health")
     def health():
         return {"status": "ok"}
+
+    # ----------------------------
+    # Matomo Analytics
+    # ----------------------------
+
+    @app.get("/matomo")
+    def matomo_page():
+        """Страница Matomo Analytics Dashboard"""
+        if not matomo.is_configured():
+            return render_template(
+                "matomo.html",
+                error="Matomo не настроен. Проверьте переменные окружения: MATOMO_BASE_URL, MATOMO_SITE_ID, MATOMO_TOKEN_AUTH",
+                configured=False
+            )
+        
+        # Передаем URL и Site ID для ссылки на Matomo
+        matomo_url = os.getenv("MATOMO_BASE_URL", "").rstrip("/")
+        matomo_site_id = os.getenv("MATOMO_SITE_ID", "")
+        
+        return render_template(
+            "matomo.html", 
+            configured=True,
+            matomo_url=matomo_url,
+            matomo_site_id=matomo_site_id
+        )
+
+    @app.get("/api/matomo/summary")
+    def matomo_summary_api():
+        """
+        API endpoint для получения агрегированных данных Matomo
+        
+        Query params:
+            period: 'day' или 'range' (по умолчанию 'day')
+            date: 'yesterday', 'last7', 'last30' (по умолчанию 'yesterday')
+        """
+        if not matomo.is_configured():
+            return jsonify({
+                "success": False,
+                "error": "Matomo не настроен"
+            }), 503
+        
+        date_param = request.args.get("date", "yesterday")
+        exclude_technical = request.args.get("exclude_technical", "0") == "1"
+        
+        # Валідація параметрів
+        valid_dates = ["yesterday", "today", "last7", "last30", "last365"]
+        
+        # Перевіряємо чи це діапазон дат (формат: YYYY-MM-DD,YYYY-MM-DD)
+        is_date_range = ',' in date_param and len(date_param.split(',')) == 2
+        
+        # Якщо не валідний готовий період і не діапазон - використовуємо yesterday
+        if date_param not in valid_dates and not is_date_range:
+            app.logger.warning(f"Invalid date parameter: {date_param}, using yesterday")
+            date_param = "yesterday"
+        
+        try:
+            data = matomo.get_summary_data(date_param, exclude_technical=exclude_technical)
+            return jsonify(data)
+        except Exception as e:
+            app.logger.exception("Matomo API failed")
+            return jsonify({
+                "success": False,
+                "error": str(e)
+            }), 500
 
     return app
 

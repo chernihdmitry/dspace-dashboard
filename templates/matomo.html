@@ -1,0 +1,582 @@
+{% extends "base.html" %}
+
+{% block head %}
+{% endblock %}
+
+{% block page_title %}
+  Matomo Analytics
+  {% if configured and matomo_url and matomo_site_id %}
+  <a href="{{ matomo_url }}/index.php?module=CoreHome&action=index&date=yesterday&period=day&idSite={{ matomo_site_id }}" 
+     target="_blank" 
+     class="btn btn-sm btn-outline-primary ms-2"
+     title="Відкрити Matomo">
+    <i class="bi bi-box-arrow-up-right"></i>
+  </a>
+  {% endif %}
+{% endblock %}
+
+{% block header_actions %}
+{% if configured %}
+<div class="d-flex gap-2 align-items-center flex-wrap">
+  <div class="form-check form-switch">
+    <input class="form-check-input" type="checkbox" id="filterTechnical">
+    <label class="form-check-label text-secondary small" for="filterTechnical" style="cursor: pointer;">
+      Виключити технічний трафік
+    </label>
+  </div>
+  
+  <select id="periodSelector" class="form-select form-select-sm" style="width: auto;">
+    <option value="yesterday" selected>Вчора</option>
+    <option value="last7">Поточний тиждень</option>
+    <option value="last30">Поточний місяць</option>
+    <option value="last365">Поточний рік</option>
+    <option value="custom">Довільний період</option>
+  </select>
+  
+  <div id="customRangeInputs" class="d-none gap-2 align-items-center">
+    <input type="date" id="dateFrom" class="form-control form-control-sm" style="width: 150px;">
+    <span class="text-secondary">—</span>
+    <input type="date" id="dateTo" class="form-control form-control-sm" style="width: 150px;">
+    <button id="applyCustomRange" class="btn btn-sm btn-primary">
+      <i class="bi bi-check-lg"></i>
+    </button>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+
+{% if error %}
+<div class="alert alert-warning" role="alert">
+  <h5 class="alert-heading">⚠️ Matomo недоступний</h5>
+  <p class="mb-0">{{ error }}</p>
+</div>
+{% elif configured %}
+
+<!-- Loading State -->
+<div id="loadingState" class="text-center py-5">
+  <div class="spinner-border text-primary" role="status">
+    <span class="visually-hidden">Завантаження...</span>
+  </div>
+  <p class="text-secondary mt-3">Завантаження даних Matomo...</p>
+</div>
+
+<!-- Error State -->
+<div id="errorState" class="alert alert-danger d-none" role="alert">
+  <h5 class="alert-heading">❌ Помилка завантаження</h5>
+  <p id="errorMessage" class="mb-0"></p>
+</div>
+
+<!-- Main Content -->
+<div id="mainContent" class="d-none">
+  
+  <!-- KPI Cards -->
+  <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-xl-5 g-3 mb-4">
+    <div class="col">
+      <div class="card card-soft h-100">
+        <div class="card-body position-relative">
+          <div class="text-secondary small mb-1">
+            Візити
+            <i class="bi bi-info-circle ms-1 text-muted" 
+               style="cursor: help; font-size: 0.9rem;"
+               data-bs-toggle="tooltip" 
+               data-bs-placement="top"
+               title="Загальна кількість візитів (сесій) на сайт за вибраний період"></i>
+          </div>
+          <div class="fs-3 fw-bold" id="kpiVisits">-</div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="col">
+      <div class="card card-soft h-100">
+        <div class="card-body position-relative">
+          <div class="text-secondary small mb-1">
+            Унікальні відвідувачі
+            <i class="bi bi-info-circle ms-1 text-muted" 
+               style="cursor: help; font-size: 0.9rem;"
+               data-bs-toggle="tooltip" 
+               data-bs-placement="top"
+               title="Кількість унікальних користувачів, які відвідали сайт (один користувач = одна IP-адреса)"></i>
+          </div>
+          <div class="fs-3 fw-bold" id="kpiUnique">-</div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="col">
+      <div class="card card-soft h-100">
+        <div class="card-body position-relative">
+          <div class="text-secondary small mb-1">
+            Перегляди сторінок
+            <i class="bi bi-info-circle ms-1 text-muted" 
+               style="cursor: help; font-size: 0.9rem;"
+               data-bs-toggle="tooltip" 
+               data-bs-placement="top"
+               title="Скільки разів користувачі переглянули сторінки сайту (одна сесія може включати декілька переглядів)"></i>
+          </div>
+          <div class="fs-3 fw-bold" id="kpiPageviews">-</div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="col">
+      <div class="card card-soft h-100">
+        <div class="card-body position-relative">
+          <div class="text-secondary small mb-1">
+            Завантаження
+            <i class="bi bi-info-circle ms-1 text-muted" 
+               style="cursor: help; font-size: 0.9rem;"
+               data-bs-toggle="tooltip" 
+               data-bs-placement="top"
+               title="Кількість завантажень файлів користувачами (PDF, документи, архіви тощо)"></i>
+          </div>
+          <div class="fs-3 fw-bold" id="kpiDownloads">-</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="card card-soft h-100">
+        <div class="card-body position-relative">
+          <div class="text-secondary small mb-1">
+            Пошуки по сайту
+            <i class="bi bi-info-circle ms-1 text-muted" 
+               style="cursor: help; font-size: 0.9rem;"
+               data-bs-toggle="tooltip" 
+               data-bs-placement="top"
+               title="Скільки разів користувачі використовували внутрішній пошук на сайті"></i>
+          </div>
+          <div class="fs-3 fw-bold" id="kpiSearches">-</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top Countries Table -->
+  <div class="card card-soft">
+    <div class="card-header bg-white">
+      <h5 class="mb-0">Топ країн</h5>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table align-middle mb-0">
+          <thead>
+            <tr class="text-secondary small">
+              <th style="width: 50px" class="text-center">#</th>
+              <th>Країна</th>
+              <th class="text-end">Візити</th>
+              <th class="text-end">Унікальні</th>
+              <th class="text-end">Дії</th>
+            </tr>
+          </thead>
+          <tbody id="countriesTable">
+            <tr>
+              <td colspan="5" class="text-center text-secondary py-4">
+                Завантаження...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+{% if configured %}
+<script>
+// Утилита для форматирования чисел
+function formatNumber(num) {
+  return new Intl.NumberFormat('uk-UA').format(num);
+}
+
+// Перевод названий стран на украинский
+function translateCountry(countryName) {
+  const translations = {
+    // Английские названия
+    'Ukraine': 'Україна',
+    'United States': 'США',
+    'Germany': 'Німеччина',
+    'Poland': 'Польща',
+    'United Kingdom': 'Велика Британія',
+    'France': 'Франція',
+    'Italy': 'Італія',
+    'Spain': 'Іспанія',
+    'Netherlands': 'Нідерланди',
+    'Canada': 'Канада',
+    'Australia': 'Австралія',
+    'Japan': 'Японія',
+    'China': 'Китай',
+    'India': 'Індія',
+    'Brazil': 'Бразилія',
+    'Russia': 'Росія',
+    'Turkey': 'Туреччина',
+    'Israel': 'Ізраїль',
+    'Czech Republic': 'Чехія',
+    'Romania': 'Румунія',
+    'Bulgaria': 'Болгарія',
+    'Hungary': 'Угорщина',
+    'Portugal': 'Португалія',
+    'Sweden': 'Швеція',
+    'Austria': 'Австрія',
+    'Belgium': 'Бельгія',
+    'Switzerland': 'Швейцарія',
+    'Greece': 'Греція',
+    'Denmark': 'Данія',
+    'Finland': 'Фінляндія',
+    'Norway': 'Норвегія',
+    'Ireland': 'Ірландія',
+    'Slovakia': 'Словаччина',
+    'Croatia': 'Хорватія',
+    'Serbia': 'Сербія',
+    'Lithuania': 'Литва',
+    'Latvia': 'Латвія',
+    'Estonia': 'Естонія',
+    'Moldova': 'Молдова',
+    'Belarus': 'Білорусь',
+    'Georgia': 'Грузія',
+    'Armenia': 'Вірменія',
+    'Azerbaijan': 'Азербайджан',
+    'Kazakhstan': 'Казахстан',
+    'South Korea': 'Південна Корея',
+    'Singapore': 'Сингапур',
+    'Thailand': 'Таїланд',
+    'Vietnam': 'В\'єтнам',
+    'Indonesia': 'Індонезія',
+    'Malaysia': 'Малайзія',
+    'Philippines': 'Філіппіни',
+    'Argentina': 'Аргентина',
+    'Chile': 'Чилі',
+    'Mexico': 'Мексика',
+    'Colombia': 'Колумбія',
+    'Peru': 'Перу',
+    'Venezuela': 'Венесуела',
+    'Egypt': 'Єгипет',
+    'South Africa': 'Південна Африка',
+    'Nigeria': 'Нігерія',
+    'Kenya': 'Кенія',
+    'Morocco': 'Марокко',
+    'Algeria': 'Алжир',
+    'Tunisia': 'Туніс',
+    'Saudi Arabia': 'Саудівська Аравія',
+    'United Arab Emirates': 'ОАЕ',
+    'Pakistan': 'Пакистан',
+    'Bangladesh': 'Бангладеш',
+    'Sri Lanka': 'Шрі-Ланка',
+    'New Zealand': 'Нова Зеландія',
+    // Русские названия (если Matomo возвращает на русском)
+    'Украина': 'Україна',
+    'Соединенные Штаты': 'США',
+    'Германия': 'Німеччина',
+    'Польша': 'Польща',
+    'Великобритания': 'Велика Британія',
+    'Франция': 'Франція',
+    'Италия': 'Італія',
+    'Испания': 'Іспанія',
+    'Нидерланды': 'Нідерланди',
+    'Канада': 'Канада',
+    'Австралия': 'Австралія',
+    'Япония': 'Японія',
+    'Китай': 'Китай',
+    'Индия': 'Індія',
+    'Бразилия': 'Бразилія',
+    'Россия': 'Росія',
+    'Турция': 'Туреччина',
+    'Израиль': 'Ізраїль',
+    'Чехия': 'Чехія',
+    'Румыния': 'Румунія',
+    'Болгария': 'Болгарія',
+    'Венгрия': 'Угорщина',
+    'Португалия': 'Португалія',
+    'Швеция': 'Швеція',
+    'Австрия': 'Австрія',
+    'Бельгия': 'Бельгія',
+    'Швейцария': 'Швейцарія',
+    'Греция': 'Греція',
+    'Дания': 'Данія',
+    'Финляндия': 'Фінляндія',
+    'Норвегия': 'Норвегія',
+    'Ирландия': 'Ірландія',
+    'Словакия': 'Словаччина',
+    'Хорватия': 'Хорватія',
+    'Сербия': 'Сербія',
+    'Литва': 'Литва',
+    'Латвия': 'Латвія',
+    'Эстония': 'Естонія',
+    'Молдова': 'Молдова',
+    'Беларусь': 'Білорусь',
+    'Грузия': 'Грузія',
+    'Армения': 'Вірменія',
+    'Азербайджан': 'Азербайджан',
+    'Казахстан': 'Казахстан',
+    'Южная Корея': 'Південна Корея',
+    'Сингапур': 'Сингапур',
+    'Таиланд': 'Таїланд',
+    'Вьетнам': 'В\'єтнам',
+    'Индонезия': 'Індонезія',
+    'Малайзия': 'Малайзія',
+    'Филиппины': 'Філіппіни',
+    'Аргентина': 'Аргентина',
+    'Чили': 'Чилі',
+    'Мексика': 'Мексика',
+    'Колумбия': 'Колумбія',
+    'Перу': 'Перу',
+    'Венесуэла': 'Венесуела',
+    'Египет': 'Єгипет',
+    'Южная Африка': 'Південна Африка',
+    'Нигерия': 'Нігерія',
+    'Кения': 'Кенія',
+    'Марокко': 'Марокко',
+    'Алжир': 'Алжир',
+    'Тунис': 'Туніс',
+    'Саудовская Аравия': 'Саудівська Аравія',
+    'ОАЭ': 'ОАЕ',
+    'Пакистан': 'Пакистан',
+    'Бангладеш': 'Бангладеш',
+    'Шри-Ланка': 'Шрі-Ланка',
+    'Новая Зеландия': 'Нова Зеландія'
+  };
+  return translations[countryName] || countryName;
+}
+
+// Завантаження даних Matomo
+async function loadMatomoData(date = 'yesterday') {
+  console.log('Loading Matomo data for:', date);
+  
+  // Показуємо індикатор завантаження
+  document.getElementById('loadingState').classList.remove('d-none');
+  document.getElementById('errorState').classList.add('d-none');
+  document.getElementById('mainContent').classList.add('d-none');
+
+  try {
+    // Перевіряємо чи потрібно фільтрувати технічний трафік
+    const filterTechnical = document.getElementById('filterTechnical').checked;
+    let url = `/api/matomo/summary?date=${encodeURIComponent(date)}`;
+    if (filterTechnical) {
+      url += '&exclude_technical=1';
+    }
+    console.log('Fetching:', url);
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    console.log('Received data:', data);
+
+    if (!data.success) {
+      throw new Error(data.error || 'Невідома помилка');
+    }
+
+    // Оновлюємо KPI
+    document.getElementById('kpiVisits').textContent = formatNumber(data.metrics.nb_visits);
+    
+    // Для last365 та range Matomo не завжди повертає унікальних відвідувачів
+    const uniqueVisitors = data.metrics.nb_uniq_visitors;
+    const kpiUniqueEl = document.getElementById('kpiUnique');
+    
+    if (uniqueVisitors === 0 && (date === 'last365' || date.includes(','))) {
+      kpiUniqueEl.innerHTML = '<span class="text-muted" style="font-size: 1.5rem;">—</span>';
+      kpiUniqueEl.parentElement.querySelector('.bi-info-circle').setAttribute('data-bs-original-title', 
+        'Matomo API не підтримує унікальних відвідувачів для періоду "range". Використовуйте готові періоди (Вчора, Останні 7 днів тощо) для перегляду цієї метрики.');
+    } else {
+      kpiUniqueEl.textContent = formatNumber(uniqueVisitors);
+      kpiUniqueEl.parentElement.querySelector('.bi-info-circle').setAttribute('data-bs-original-title',
+        'Кількість унікальних користувачів, які відвідали сайт (один користувач = одна IP-адреса)');
+    }
+    
+    document.getElementById('kpiPageviews').textContent = formatNumber(data.metrics.nb_pageviews);
+    document.getElementById('kpiDownloads').textContent = formatNumber(data.metrics.nb_downloads);
+    document.getElementById('kpiSearches').textContent = formatNumber(data.metrics.nb_searches);
+
+    // Оновлюємо таблицю країн
+    const tbody = document.getElementById('countriesTable');
+    tbody.innerHTML = '';
+
+    if (data.countries && data.countries.length > 0) {
+      data.countries.forEach((country, index) => {
+        const row = document.createElement('tr');
+        
+        const countryCode = country.code ? country.code.toUpperCase() : '';
+        
+        // Комірка 1: номер
+        const cell1 = document.createElement('td');
+        cell1.className = 'text-center text-secondary small';
+        cell1.textContent = index + 1;
+        
+        // Комірка 2: прапор (PNG з Matomo) + назва країни
+        const cell2 = document.createElement('td');
+        
+        // Прапор через PNG іконку Matomo (якщо є logo)
+        if (country.logo && data.matomo_base_url) {
+          const img = document.createElement('img');
+          img.src = `${data.matomo_base_url}/${country.logo}`;
+          img.width = 18;
+          img.height = 12;
+          img.alt = countryCode;
+          img.style.marginRight = '8px';
+          img.style.verticalAlign = 'middle';
+          img.style.border = '1px solid #ddd';
+          cell2.appendChild(img);
+        } else if (countryCode) {
+          // Fallback: якщо немає logo - показуємо badge з кодом країни
+          const badge = document.createElement('span');
+          badge.className = 'badge bg-secondary me-2';
+          badge.textContent = countryCode;
+          badge.style.fontSize = '10px';
+          cell2.appendChild(badge);
+        }
+        
+        // Назва країни
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'fw-medium';
+        nameSpan.textContent = country.label;
+        cell2.appendChild(nameSpan);
+        
+        // Код країни (якщо є)
+        if (countryCode) {
+          const codeSpan = document.createElement('span');
+          codeSpan.className = 'text-muted small ms-2';
+          codeSpan.textContent = countryCode;
+          cell2.appendChild(codeSpan);
+        }
+        
+        // Комірка 3: візити
+        const cell3 = document.createElement('td');
+        cell3.className = 'text-end fw-semibold';
+        cell3.textContent = formatNumber(country.nb_visits);
+        
+        // Комірка 4: унікальні
+        const cell4 = document.createElement('td');
+        cell4.className = 'text-end';
+        cell4.textContent = formatNumber(country.nb_uniq_visitors);
+        
+        // Комірка 5: перегляди (використовуємо nb_actions бо nb_pageviews не завжди доступний для країн)
+        const cell5 = document.createElement('td');
+        cell5.className = 'text-end';
+        cell5.textContent = formatNumber(country.nb_actions);
+        
+        row.appendChild(cell1);
+        row.appendChild(cell2);
+        row.appendChild(cell3);
+        row.appendChild(cell4);
+        row.appendChild(cell5);
+        tbody.appendChild(row);
+      });
+    } else {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-secondary py-4">Немає даних</td></tr>';
+    }
+
+    // Показуємо контент
+    document.getElementById('loadingState').classList.add('d-none');
+    document.getElementById('mainContent').classList.remove('d-none');
+
+  } catch (error) {
+    console.error('Matomo API error:', error);
+    
+    // Показуємо помилку
+    document.getElementById('errorMessage').textContent = error.message;
+    document.getElementById('loadingState').classList.add('d-none');
+    document.getElementById('errorState').classList.remove('d-none');
+  }
+}
+
+// Обробник зміни фільтру технічного трафіку
+document.getElementById('filterTechnical').addEventListener('change', () => {
+  const periodSelector = document.getElementById('periodSelector');
+  const currentPeriod = periodSelector.value;
+  
+  // Якщо вибрано custom період, потрібно отримати діапазон дат
+  if (currentPeriod === 'custom') {
+    const customOption = periodSelector.querySelector('option[value="custom"]');
+    const customText = customOption.textContent;
+    
+    // Якщо текст містить діапазон (не "Довільний період"), перезавантажуємо
+    if (customText !== 'Довільний період' && customText.includes('—')) {
+      const dateFrom = document.getElementById('dateFrom').value;
+      const dateTo = document.getElementById('dateTo').value;
+      if (dateFrom && dateTo) {
+        loadMatomoData(`${dateFrom},${dateTo}`);
+      }
+    }
+  } else {
+    loadMatomoData(currentPeriod);
+  }
+});
+
+// Обробник зміни періоду
+document.getElementById('periodSelector').addEventListener('change', (e) => {
+  const value = e.target.value;
+  const customRangeInputs = document.getElementById('customRangeInputs');
+  
+  if (value === 'custom') {
+    // Показуємо поля вибору дат
+    customRangeInputs.classList.remove('d-none');
+    customRangeInputs.classList.add('d-flex');
+    
+    // Встановлюємо значення за замовчуванням
+    const today = new Date();
+    const weekAgo = new Date(today);
+    weekAgo.setDate(today.getDate() - 7);
+    
+    document.getElementById('dateTo').valueAsDate = today;
+    document.getElementById('dateFrom').valueAsDate = weekAgo;
+    
+    // Повертаємо оригінальний текст опції
+    e.target.querySelector('option[value="custom"]').textContent = 'Довільний період';
+  } else {
+    // Ховаємо поля і завантажуємо дані
+    customRangeInputs.classList.add('d-none');
+    customRangeInputs.classList.remove('d-flex');
+    loadMatomoData(value);
+  }
+});
+
+// Обробник кнопки застосування довільного діапазону
+document.getElementById('applyCustomRange').addEventListener('click', () => {
+  const dateFrom = document.getElementById('dateFrom').value;
+  const dateTo = document.getElementById('dateTo').value;
+  
+  if (!dateFrom || !dateTo) {
+    alert('Будь ласка, оберіть обидві дати');
+    return;
+  }
+  
+  if (dateFrom > dateTo) {
+    alert('Дата початку не може бути пізніше дати кінця');
+    return;
+  }
+  
+  // Показуємо індикатор завантаження і ховаємо поля вибору дат
+  const customRangeInputs = document.getElementById('customRangeInputs');
+  customRangeInputs.classList.add('d-none');
+  customRangeInputs.classList.remove('d-flex');
+  
+  // Оновлюємо текст в селекторі для відображення обраного періоду
+  const periodSelector = document.getElementById('periodSelector');
+  const customOption = periodSelector.querySelector('option[value="custom"]');
+  const fromDate = new Date(dateFrom);
+  const toDate = new Date(dateTo);
+  customOption.textContent = `${fromDate.toLocaleDateString('uk-UA', {day: '2-digit', month: '2-digit'})} — ${toDate.toLocaleDateString('uk-UA', {day: '2-digit', month: '2-digit', year: 'numeric'})}`;
+  
+  // Завантажуємо дані з довільним діапазоном
+  loadMatomoData(`${dateFrom},${dateTo}`);
+});
+
+// Автозавантаження при відкритті сторінки
+document.addEventListener('DOMContentLoaded', () => {
+  // Ініціалізація Bootstrap tooltips
+  const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+  tooltipTriggerList.map(function (tooltipTriggerEl) {
+    return new bootstrap.Tooltip(tooltipTriggerEl);
+  });
+  
+  loadMatomoData('yesterday');
+});
+</script>
+{% endif %}
+{% endblock %}
