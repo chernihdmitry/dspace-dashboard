@@ -373,6 +373,78 @@ def monthly_stats(start_year: int, start_month: int):
     return rows
 
 
+def stats_for_month(year: int, month: int):
+    """Получить статистику за конкретный месяц"""
+    start_dt, end_dt = month_range(year, month)
+    
+    return {
+        "year": year,
+        "month": month,
+        "views": views_count(start_dt, end_dt),
+        "downloads": downloads_count(start_dt, end_dt),
+    }
+
+
+def stats_for_year(year: int):
+    """Получить статистику за весь год (суммарно)"""
+    today = date.today()
+    
+    start = datetime(year, 1, 1, 0, 0, 0)
+    if year == today.year:
+        end = datetime.combine(today, datetime.max.time())
+    else:
+        end = datetime(year, 12, 31, 23, 59, 59)
+    
+    return {
+        "year": year,
+        "month": 0,
+        "views": views_count(start, end),
+        "downloads": downloads_count(start, end),
+    }
+
+
+def stats_year_by_months(year: int):
+    """Получить статистику по каждому месяцу года для таблицы"""
+    today = date.today()
+    months_data = []
+    
+    for month in range(1, 13):
+        # Если это будущий месяц - пропускаем
+        if year == today.year and month > today.month:
+            break
+            
+        start_dt, end_dt = month_range(year, month)
+        
+        months_data.append({
+            "month": month,
+            "views": views_count(start_dt, end_dt),
+            "downloads": downloads_count(start_dt, end_dt),
+        })
+    
+    return months_data
+
+
+def stats_dynamics_for_year(year: int):
+    """Получить динамику по месяцам для графика за год"""
+    today = date.today()
+    months = []
+    
+    for month in range(1, 13):
+        # Если это будущий месяц - пропускаем
+        if year == today.year and month > today.month:
+            break
+            
+        start_dt, end_dt = month_range(year, month)
+        
+        months.append({
+            "month": month,
+            "views": views_count(start_dt, end_dt),
+            "downloads": downloads_count(start_dt, end_dt),
+        })
+    
+    return months
+
+
 # -----------------------------
 # Submitters (terms facet)
 # -----------------------------

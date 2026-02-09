@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+{% block page_title %}Динаміка завантажень за {{ year }} рік{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-end mb-3">
+  <a href="{{ url_for('statistics') }}" class="btn btn-outline-secondary">
+    <i class="bi bi-arrow-left"></i> Назад до завантажень
+  </a>
+</div>
+
+<form class="card card-soft mb-3" id="yearForm">
+  <div class="card-body d-flex flex-wrap gap-2 align-items-end">
+    <div>
+      <label class="form-label small text-secondary mb-1">Рік</label>
+      <select class="form-select" id="yearSel">
+        {% for y in years %}
+          <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Показати</button>
+  </div>
+</form>
+
+<script>
+  document.getElementById('yearForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    const y = document.getElementById('yearSel').value;
+    const base = {{ url_for('statistics_dynamics', year=0)|tojson }};
+    window.location.href = base.replace('/0', `/${y}`);
+  });
+</script>
+
+{% if error %}
+<div class="alert alert-danger">
+  <div class="fw-semibold">Помилка</div>
+  <pre class="mb-0 small" style="white-space:pre-wrap">{{ error }}</pre>
+</div>
+{% endif %}
+
+<div class="card card-soft">
+  <div class="card-body">
+    {% if dynamics_data|length > 0 %}
+    <canvas id="dynamicsChart" style="max-height: 400px;"></canvas>
+    
+    <script>
+      const monthNames = {{ month_names|tojson }};
+      const data = {{ dynamics_data|tojson }};
+      
+      const labels = data.map(d => monthNames[d.month]);
+      const viewsData = data.map(d => d.views);
+      const downloadsData = data.map(d => d.downloads);
+      
+      // Определяем пиковые месяцы
+      const peakMonths = [4, 11]; // Квітень (4), Листопад (11)
+      const currentMonthsIndices = data.map(d => d.month);
+      
+      const ctx = document.getElementById('dynamicsChart').getContext('2d');
+      new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: 'Перегляди документів',
+              data: viewsData,
+              backgroundColor: currentMonthsIndices.map(m => 
+                peakMonths.includes(m) ? 'rgba(30, 130, 200, 0.9)' : 'rgba(54, 162, 235, 0.75)'
+              ),
+              borderColor: 'rgb(30, 130, 200)',
+              borderWidth: currentMonthsIndices.map(m => peakMonths.includes(m) ? 2 : 1),
+              order: 1
+            },
+            {
+              label: 'Завантаження файлів',
+              data: downloadsData,
+              backgroundColor: currentMonthsIndices.map(m => 
+                peakMonths.includes(m) ? 'rgba(20, 150, 130, 0.9)' : 'rgba(75, 192, 192, 0.75)'
+              ),
+              borderColor: 'rgb(20, 150, 130)',
+              borderWidth: currentMonthsIndices.map(m => peakMonths.includes(m) ? 2 : 1),
+              order: 2
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: true,
+          barPercentage: 0.7,
+          categoryPercentage: 0.75,
+          plugins: {
+            legend: {
+              position: 'top',
+              align: 'center',
+              labels: {
+                usePointStyle: true,
+                pointStyle: 'rect',
+                padding: 16,
+                font: {
+                  size: 12,
+                  weight: '500'
+                },
+                color: '#2c3e50'
+              }
+            },
+            title: {
+              display: true,
+              text: 'Динаміка активності користувачів репозиторію за {{ year }} рік',
+              font: {
+                size: 15,
+                weight: '600'
+              },
+              color: '#2c3e50',
+              padding: { top: 5, bottom: 25 }
+            },
+            tooltip: {
+              backgroundColor: 'rgba(44, 62, 80, 0.95)',
+              titleColor: '#ecf0f1',
+              bodyColor: '#ecf0f1',
+              borderColor: '#34495e',
+              borderWidth: 1,
+              padding: 14,
+              displayColors: true,
+              boxPadding: 6,
+              usePointStyle: true,
+              callbacks: {
+                title: function(context) {
+                  const monthIndex = data[context[0].dataIndex].month;
+                  const isPeak = peakMonths.includes(monthIndex);
+                  return context[0].label + (isPeak ? ' ⬆ пік' : '');
+                },
+                label: function(context) {
+                  const label = context.dataset.label || '';
+                  const value = context.parsed.y;
+                  return ' ' + label + ': ' + value.toLocaleString('uk-UA');
+                },
+                afterBody: function(context) {
+                  if (context.length > 1) {
+                    const total = context.reduce((sum, item) => sum + item.parsed.y, 0);
+                    return '\nЗагальна активність: ' + total.toLocaleString('uk-UA');
+                  }
+                  return '';
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: {
+                display: false,
+                drawBorder: true,
+                borderColor: '#bdc3c7'
+              },
+              ticks: {
+                color: '#2c3e50',
+                font: {
+                  size: 11,
+                  weight: '500'
+                }
+              },
+              title: {
+                display: true,
+                text: 'Період (місяць)',
+                font: {
+                  size: 12,
+                  weight: '600'
+                },
+                color: '#34495e',
+                padding: { top: 10 }
+              }
+            },
+            y: {
+              type: 'linear',
+              display: true,
+              position: 'left',
+              beginAtZero: true,
+              grid: {
+                color: 'rgba(189, 195, 199, 0.3)',
+                drawBorder: true,
+                borderColor: '#bdc3c7'
+              },
+              ticks: {
+                color: '#2c3e50',
+                font: {
+                  size: 11
+                },
+                callback: function(value) {
+                  if (value >= 1000) {
+                    return (value / 1000).toFixed(1).replace('.0', '') + ' тис.';
+                  }
+                  return value.toLocaleString('uk-UA');
+                }
+              },
+              title: {
+                display: true,
+                text: 'Кількість взаємодій',
+                font: {
+                  size: 12,
+                  weight: '600'
+                },
+                color: '#34495e',
+                padding: { bottom: 10 }
+              }
+            }
+          },
+          interaction: {
+            intersect: false,
+            mode: 'index'
+          }
+        }
+      });
+    </script>
+    
+    <div class="mt-4">
+      <h5 class="small text-secondary mb-3">Дані по місяцях:</h5>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr class="text-secondary small">
+              <th>Місяць</th>
+              <th class="text-end">Перегляди</th>
+              <th class="text-end">Завантаження</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% set ns = namespace(total_views=0, total_downloads=0) %}
+            {% for d in dynamics_data %}
+              {% set ns.total_views = ns.total_views + d.views %}
+              {% set ns.total_downloads = ns.total_downloads + d.downloads %}
+              <tr>
+                <td>{{ month_names[d.month] }}</td>
+                <td class="text-end fw-semibold">{{ d.views|fmt }}</td>
+                <td class="text-end fw-semibold">{{ d.downloads|fmt }}</td>
+              </tr>
+            {% endfor %}
+            <tr class="table-active border-top border-2">
+              <td class="fw-bold">Усього</td>
+              <td class="text-end fw-bold">{{ ns.total_views|fmt }}</td>
+              <td class="text-end fw-bold">{{ ns.total_downloads|fmt }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% else %}
+    <div class="text-secondary">Немає даних для відображення</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

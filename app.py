@@ -1,9 +1,11 @@
 import os
 from datetime import date
-from flask import Flask, render_template, redirect, url_for, jsonify, request
+from flask import Flask, render_template, redirect, url_for, jsonify, request, flash, session
 from flask_caching import Cache
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from pathlib import Path
 from werkzeug.middleware.proxy_fix import ProxyFix
+from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 
 # Загрузка переменных окружения из файлов
@@ -14,6 +16,7 @@ load_dotenv()  # загружает .env если есть
 
 import solr_client as solr
 import matomo_client as matomo
+import auth_dspace
 
 APP_TITLE = os.getenv("APP_TITLE", "DSpace Live Dashboard")
 REPO_NAME = os.getenv("REPO_NAME", "iRDPU")
@@ -37,10 +40,42 @@ def read_version() -> str:
 
 APP_VERSION = os.getenv("APP_VERSION") or read_version()
 
+
+# ---- User Model for Flask-Login ----
+class User(UserMixin):
+    def __init__(self, user_id: str, email: str, token: str):
+        self.id = user_id
+        self.email = email
+        self.token = token
+
+
 def create_app():
     app = Flask(__name__)
+    
+    # Secret key for sessions
+    app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", os.urandom(24).hex())
+    
     # чтобы Flask/werkzeug учитывал заголовки от прокси (proto/host/prefix)
     app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1, x_prefix=1)
+
+    # ---- Flask-Login Setup ----
+    login_manager = LoginManager()
+    login_manager.init_app(app)
+    login_manager.login_view = "login"
+    login_manager.login_message = "Необхідна авторизація"
+    login_manager.login_message_category = "warning"
+
+    @login_manager.user_loader
+    def load_user(user_id):
+        # Загружаем пользователя из сессии
+        token = session.get("token")
+        email = session.get("email")
+        if token and email:
+            # Проверяем валидность токена
+            user_data = auth_dspace.check_user_status(token)
+            if user_data and user_data.get("authenticated"):
+                return User(user_id, email, token)
+        return None
 
     # ---- Cache ----
     app.config["CACHE_TYPE"] = os.getenv("CACHE_TYPE", "SimpleCache")
@@ -67,14 +102,83 @@ def create_app():
         }
 
     # ----------------------------
+    # Authentication Routes
+    # ----------------------------
+
+    @app.route("/login", methods=["GET", "POST"])
+    def login():
+        if current_user.is_authenticated:
+            return redirect(url_for("index"))
+        
+        if request.method == "POST":
+            email = request.form.get("email", "").strip()
+            password = request.form.get("password", "")
+            
+            if not email or not password:
+                flash("Введіть email та пароль", "danger")
+                return render_template("login.html")
+            
+            # Авторизация через DSpace API
+            token = auth_dspace.authenticate(email, password)
+            
+            if not token:
+                flash("Невірний email або пароль", "danger")
+                return render_template("login.html")
+            
+            # Проверяем статус пользователя
+            user_data = auth_dspace.check_user_status(token)
+            
+            if not user_data or not user_data.get("authenticated"):
+                flash("Помилка авторизації", "danger")
+                return render_template("login.html")
+            
+            # Проверяем права администратора
+            if not auth_dspace.is_administrator(token, user_data):
+                flash("Доступ тільки для адміністраторів", "danger")
+                return render_template("login.html")
+            
+            # Создаем пользователя и логиним
+            user_id = user_data.get("uuid") or user_data.get("id") or email
+            user = User(user_id, email, token)
+            login_user(user, remember=True)
+            
+            # Сохраняем в сессию
+            session["token"] = token
+            session["email"] = email
+            
+            flash(f"Вітаємо, {email}!", "success")
+            
+            # Редирект на запрошенную страницу или на главную
+            next_page = request.args.get("next")
+            if next_page and next_page.startswith("/"):
+                return redirect(next_page)
+            return redirect(url_for("index"))
+        
+        return render_template("login.html")
+
+    @app.route("/logout")
+    @login_required
+    def logout():
+        token = session.get("token")
+        if token:
+            auth_dspace.logout(token)
+        
+        session.clear()
+        logout_user()
+        flash("Ви вийшли з системи", "info")
+        return redirect(url_for("login"))
+
+    # ----------------------------
     # Routes
     # ----------------------------
 
     @app.get("/")
+    @login_required
     def index():
         return redirect(url_for("info"))
 
     @app.get("/info")
+    @login_required
     @cache.cached(timeout=CACHE_TTL_SECONDS, key_prefix="info_page_v1")
     def info():
         # --- Solr totals ---
@@ -143,24 +247,136 @@ def create_app():
         )
 
     @app.get("/statistics")
+    @login_required
     def statistics():
-        key = f"monthly_stats_{START_YEAR}_{START_MONTH}_v2"
-        rows = cache.get(key)
-        if rows is None:
-            rows = solr.monthly_stats(START_YEAR, START_MONTH)
-            cache.set(key, rows, timeout=CACHE_TTL_SECONDS)
+        today = date.today()
+        return redirect(url_for("statistics_period", year=today.year, month=0))
 
-        for r in rows:
-            r["month_name"] = MONTH_NAMES_UA.get(int(r["month"]), str(r["month"]))
+    @app.get("/statistics/<int:year>/<int:month>")
+    @login_required
+    def statistics_period(year: int, month: int):
+        # Месяц 0 означает "весь год"
+        if month == 0:
+            return statistics_year_view(year)
+        
+        if month < 1 or month > 12:
+            return redirect(url_for("statistics"))
+
+        today = date.today()
+        years = list(range(START_YEAR, today.year + 1))
+        months = list(range(1, 13))
+
+        key = f"stats_{year}_{month}_v1"
+        stats = cache.get(key)
+
+        error = None
+        if stats is None:
+            try:
+                stats = solr.stats_for_month(year, month)
+                cache.set(key, stats, timeout=CACHE_TTL_SECONDS)
+            except Exception as e:
+                app.logger.exception("Statistics failed")
+                stats = {"submitted": 0, "views": 0, "downloads": 0}
+                error = str(e)
+
+        month_name = MONTH_NAMES_UA.get(month, str(month))
 
         return render_template(
             "statistics.html",
-            rows=rows,
-            start_year=START_YEAR,
-            start_month=START_MONTH,
+            year=year,
+            month=month,
+            month_name=month_name,
+            stats=stats,
+            error=error,
+            years=years,
+            months=months,
+            selected_year=year,
+            selected_month=month,
+            month_names=MONTH_NAMES_UA,
+            today_year=today.year,
+            today_month=today.month,
         )
 
-    @app.get("/statistics/<int:year>/<int:month>")
+    def statistics_year_view(year: int):
+        """Внутренняя функция для отображения статистики за весь год"""
+        today = date.today()
+        years = list(range(START_YEAR, today.year + 1))
+        months = list(range(1, 13))
+
+        key = f"stats_{year}_by_months_v1"
+        months_data = cache.get(key)
+
+        error = None
+        if months_data is None:
+            try:
+                months_data = solr.stats_year_by_months(year)
+                cache.set(key, months_data, timeout=CACHE_TTL_SECONDS)
+            except Exception as e:
+                app.logger.exception("Statistics for year failed")
+                months_data = []
+                error = str(e)
+
+        return render_template(
+            "statistics.html",
+            year=year,
+            month=0,
+            month_name=f"Усі місяці {year} року",
+            months_data=months_data,
+            error=error,
+            years=years,
+            months=months,
+            selected_year=year,
+            selected_month=0,
+            month_names=MONTH_NAMES_UA,
+            today_year=today.year,
+            today_month=today.month,
+        )
+
+    @app.get("/statistics/dynamics")
+    @login_required
+    def statistics_dynamics_redirect():
+        today = date.today()
+        return redirect(url_for("statistics_dynamics", year=today.year))
+
+    @app.get("/statistics/dynamics/<int:year>")
+    @login_required
+    def statistics_dynamics(year: int = None):
+        """Страница с графиком динамики за год"""
+        today = date.today()
+        
+        if year is None:
+            year = today.year
+        
+        if year < START_YEAR or year > today.year:
+            year = today.year
+        
+        years = list(range(START_YEAR, today.year + 1))
+        
+        key = f"stats_dynamics_{year}_v1"
+        dynamics_data = cache.get(key)
+        
+        error = None
+        if dynamics_data is None:
+            try:
+                dynamics_data = solr.stats_dynamics_for_year(year)
+                cache.set(key, dynamics_data, timeout=CACHE_TTL_SECONDS)
+            except Exception as e:
+                app.logger.exception("Dynamics data failed")
+                dynamics_data = []
+                error = str(e)
+        
+        return render_template(
+            "statistics_dynamics.html",
+            dynamics_data=dynamics_data,
+            error=error,
+            year=year,
+            years=years,
+            selected_year=year,
+            month_names=MONTH_NAMES_UA,
+        )
+
+    @app.get("/statistics/<int:year>/<int:month>/details")
+    @login_required
     def month_details(year: int, month: int):
         if month < 1 or month > 12:
             return redirect(url_for("statistics"))
@@ -181,11 +397,13 @@ def create_app():
         )
 
     @app.get("/submitters")
+    @login_required
     def submitters():
         today = date.today()
         return redirect(url_for("submitters_month", year=today.year, month=today.month))
 
     @app.get("/submitters/<int:year>/<int:month>")
+    @login_required
     def submitters_month(year: int, month: int):
         # Месяц 0 означает "весь год"
         if month == 0:
@@ -266,6 +484,7 @@ def create_app():
 
     @app.get("/submitters/heatmap")
     @app.get("/submitters/heatmap/<int:year>")
+    @login_required
     def submitters_heatmap(year: int = None):
         """Страница с тепловой картой отправителей по месяцам"""
         today = date.today()
@@ -312,6 +531,7 @@ def create_app():
     # ----------------------------
 
     @app.get("/matomo")
+    @login_required
     def matomo_page():
         """Страница Matomo Analytics Dashboard"""
         if not matomo.is_configured():
@@ -333,6 +553,7 @@ def create_app():
         )
 
     @app.get("/api/matomo/summary")
+    @login_required
     def matomo_summary_api():
         """
         API endpoint для получения агрегированных данных Matomo

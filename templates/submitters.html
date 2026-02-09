@@ -74,6 +74,7 @@
           </tr>
         </thead>
         <tbody>
+          {% set ns = namespace(total=0) %}
           {% for r in rows %}
             {# --- submitter name --- #}
             {% set name = "" %}
@@ -90,6 +91,7 @@
             {% elif r.count is defined %}
               {% set cnt = r.count %}
             {% endif %}
+            {% set ns.total = ns.total + cnt %}
 
             <tr>
               <td class="text-truncate" style="max-width: 520px">{{ name if name else "—" }}</td>
@@ -98,6 +100,12 @@
           {% else %}
             <tr><td colspan="2" class="text-secondary">Немає даних</td></tr>
           {% endfor %}
+          {% if rows|length > 0 %}
+          <tr class="table-active border-top border-2">
+            <td class="fw-bold">Усього</td>
+            <td class="fw-bold text-end">{{ ns.total|fmt }}</td>
+          </tr>
+          {% endif %}
         </tbody>
       </table>
     </div>

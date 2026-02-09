@@ -35,9 +35,9 @@
         </li>
 
         <li class="nav-item">
-        <a class="nav-link {% if request.endpoint in ['statistics', 'month_details'] %}active{% endif %}"
+        <a class="nav-link {% if request.endpoint in ['statistics', 'statistics_period', 'statistics_dynamics', 'month_details'] %}active{% endif %}"
             href="{{ url_for('statistics') }}">
-            Статистика
+            Завантаження
         </a>
         </li>
 
@@ -54,6 +54,14 @@
             href="{{ url_for('matomo_page') }}">
             Matomo
         </a>
+        </li>
+        {% endif %}
+
+        {% if current_user.is_authenticated %}
+        <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('logout') }}" title="Вийти">
+                <i class="bi bi-box-arrow-right"></i> Вийти
+            </a>
         </li>
         {% endif %}
 
