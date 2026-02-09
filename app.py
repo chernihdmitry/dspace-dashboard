@@ -400,7 +400,7 @@ def create_app():
     @login_required
     def submitters():
         today = date.today()
-        return redirect(url_for("submitters_month", year=today.year, month=today.month))
+        return redirect(url_for("submitters_month", year=today.year, month=0))
 
     @app.get("/submitters/<int:year>/<int:month>")
     @login_required
