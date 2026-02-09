@@ -1,4 +1,5 @@
 import os
+import logging
 from datetime import date
 from flask import Flask, render_template, redirect, url_for, jsonify, request, flash, session
 from flask_caching import Cache
@@ -76,6 +77,11 @@ def create_app():
             if user_data and user_data.get("authenticated"):
                 return User(user_id, email, token)
         return None
+
+    # ---- Logging ----
+    auth_logger = logging.getLogger("auth_dspace")
+    auth_logger.setLevel(logging.INFO)
+    auth_logger.propagate = True
 
     # ---- Cache ----
     app.config["CACHE_TYPE"] = os.getenv("CACHE_TYPE", "SimpleCache")
