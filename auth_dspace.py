@@ -163,8 +163,36 @@ def is_administrator(token: str, user_data: Optional[Dict] = None) -> bool:
                 print(f"[AUTH DEBUG] EPerson email: {email}", file=sys.stderr, flush=True)
                 print(f"[AUTH DEBUG] EPerson UUID: {user_uuid}", file=sys.stderr, flush=True)
                 
+                # Проверяем группы пользователя через _links.groups
+                groups_link = eperson_data.get("_links", {}).get("groups", {}).get("href")
+                if groups_link:
+                    print(f"[AUTH DEBUG] Fetching user groups from: {groups_link}", file=sys.stderr, flush=True)
+                    try:
+                        groups_response = requests.get(groups_link, headers=headers, timeout=10)
+                        print(f"[AUTH DEBUG] User groups response: {groups_response.status_code}", file=sys.stderr, flush=True)
+                        
+                        if groups_response.status_code == 200:
+                            groups_data = groups_response.json()
+                            print(f"[AUTH DEBUG] User groups data: {groups_data}", file=sys.stderr, flush=True)
+                            
+                            # Проверяем _embedded.groups
+                            user_groups = groups_data.get("_embedded", {}).get("groups", [])
+                            print(f"[AUTH DEBUG] Found {len(user_groups)} user groups", file=sys.stderr, flush=True)
+                            
+                            for group in user_groups:
+                                group_name = group.get("name", "")
+                                group_uuid = group.get("uuid") or group.get("id")
+                                print(f"[AUTH DEBUG] User group: {group_name} ({group_uuid})", file=sys.stderr, flush=True)
+                                
+                                if "administrator" in group_name.lower():
+                                    print(f"[AUTH DEBUG] ✓ User is administrator (user group: {group_name})", file=sys.stderr, flush=True)
+                                    return True
+                    except Exception as e:
+                        print(f"[AUTH ERROR] Failed to fetch user groups: {e}", file=sys.stderr, flush=True)
+                
                 # Проверяем группы в eperson данных
                 groups = eperson_data.get("groups", [])
+                if groups:
                 if groups:
                     print(f"[AUTH DEBUG] EPerson groups: {groups}", file=sys.stderr, flush=True)
                     for group in groups:
