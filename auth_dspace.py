@@ -144,10 +144,65 @@ def is_administrator(token: str, user_data: Optional[Dict] = None) -> bool:
     
     print(f"[AUTH DEBUG] User authenticated, checking groups...", file=sys.stderr, flush=True)
     
-    # Проверяем группы пользователя
-    # В DSpace 7+ информация о группах может быть в разных местах
+    headers = {"Authorization": f"Bearer {token}"}
     
-    # Вариант 1: прямо в user_data
+    # Получаем данные пользователя по ссылке _links.eperson
+    eperson_link = user_data.get("_links", {}).get("eperson", {}).get("href")
+    if eperson_link:
+        print(f"[AUTH DEBUG] Fetching eperson data from: {eperson_link}", file=sys.stderr, flush=True)
+        try:
+            response = requests.get(eperson_link, headers=headers, timeout=10)
+            if response.status_code == 200:
+                eperson_data = response.json()
+                print(f"[AUTH DEBUG] EPerson data: {eperson_data}", file=sys.stderr, flush=True)
+                
+                # Обновляем user_data с полной информацией
+                email = eperson_data.get("email", "")
+                user_uuid = eperson_data.get("uuid") or eperson_data.get("id")
+                
+                print(f"[AUTH DEBUG] EPerson email: {email}", file=sys.stderr, flush=True)
+                print(f"[AUTH DEBUG] EPerson UUID: {user_uuid}", file=sys.stderr, flush=True)
+                
+                # Проверяем группы в eperson данных
+                groups = eperson_data.get("groups", [])
+                if groups:
+                    print(f"[AUTH DEBUG] EPerson groups: {groups}", file=sys.stderr, flush=True)
+                    for group in groups:
+                        group_name = group.get("name", "").lower()
+                        if "administrator" in group_name:
+                            print(f"[AUTH DEBUG] ✓ User is administrator (eperson group: {group_name})", file=sys.stderr, flush=True)
+                            return True
+        except Exception as e:
+            print(f"[AUTH ERROR] Failed to fetch eperson data: {e}", file=sys.stderr, flush=True)
+    
+    # Проверяем specialGroups по ссылке
+    special_groups_link = user_data.get("_links", {}).get("specialGroups", {}).get("href")
+    if special_groups_link:
+        print(f"[AUTH DEBUG] Fetching special groups from: {special_groups_link}", file=sys.stderr, flush=True)
+        try:
+            response = requests.get(special_groups_link, headers=headers, timeout=10)
+            print(f"[AUTH DEBUG] Special groups response: {response.status_code}", file=sys.stderr, flush=True)
+            
+            if response.status_code == 200:
+                groups_data = response.json()
+                print(f"[AUTH DEBUG] Special groups data: {groups_data}", file=sys.stderr, flush=True)
+                
+                # Проверяем _embedded.groups
+                groups = groups_data.get("_embedded", {}).get("groups", [])
+                print(f"[AUTH DEBUG] Found {len(groups)} special groups", file=sys.stderr, flush=True)
+                
+                for group in groups:
+                    group_name = group.get("name", "")
+                    group_uuid = group.get("uuid") or group.get("id")
+                    print(f"[AUTH DEBUG] Special group: {group_name} ({group_uuid})", file=sys.stderr, flush=True)
+                    
+                    if "administrator" in group_name.lower():
+                        print(f"[AUTH DEBUG] ✓ User is administrator (special group: {group_name})", file=sys.stderr, flush=True)
+                        return True
+        except Exception as e:
+            print(f"[AUTH ERROR] Failed to fetch special groups: {e}", file=sys.stderr, flush=True)
+    
+    # Проверяем группы пользователя в user_data (если есть)
     groups = user_data.get("groups", [])
     print(f"[AUTH DEBUG] Groups in user_data: {groups}", file=sys.stderr, flush=True)
     
@@ -158,7 +213,7 @@ def is_administrator(token: str, user_data: Optional[Dict] = None) -> bool:
             print(f"[AUTH DEBUG] ✓ User is administrator (group: {group_name})", file=sys.stderr, flush=True)
             return True
     
-    # Вариант 2: через _links.specialGroups или _embedded
+    # Вариант через _embedded
     if "_embedded" in user_data:
         embedded_groups = user_data["_embedded"].get("specialGroups", [])
         print(f"[AUTH DEBUG] Embedded groups: {embedded_groups}", file=sys.stderr, flush=True)
@@ -168,56 +223,24 @@ def is_administrator(token: str, user_data: Optional[Dict] = None) -> bool:
                 print(f"[AUTH DEBUG] ✓ User is administrator (embedded group: {group_name})", file=sys.stderr, flush=True)
                 return True
     
-    # Вариант 3: через authorizations endpoint
-    user_uuid = user_data.get("uuid") or user_data.get("id")
-    print(f"[AUTH DEBUG] User UUID: {user_uuid}", file=sys.stderr, flush=True)
-    
-    if user_uuid:
+    # Fallback: ADMIN_EMAILS
+    if eperson_link:
         try:
-            # Проверяем права через authorizations
-            url = f"{API_BASE}/authz/authorizations/search/object"
-            headers = {"Authorization": f"Bearer {token}"}
-            params = {"uri": f"{API_BASE}/eperson/{user_uuid}"}
-            
-            print(f"[AUTH DEBUG] Checking authorizations at: {url}", file=sys.stderr, flush=True)
-            
-            response = requests.get(url, headers=headers, params=params, timeout=10)
-            print(f"[AUTH DEBUG] Authorizations response: {response.status_code}", file=sys.stderr, flush=True)
-            
+            response = requests.get(eperson_link, headers=headers, timeout=10)
             if response.status_code == 200:
-                data = response.json()
-                print(f"[AUTH DEBUG] Authorizations data: {data}", file=sys.stderr, flush=True)
+                email = response.json().get("email", "").lower()
+                print(f"[AUTH DEBUG] User email from eperson: {email}", file=sys.stderr, flush=True)
                 
-                # Ищем права администратора
-                authorizations = data.get("_embedded", {}).get("authorizations", [])
-                print(f"[AUTH DEBUG] Found {len(authorizations)} authorizations", file=sys.stderr, flush=True)
+                # Проверяем ADMIN_EMAILS
+                admin_emails = os.getenv("ADMIN_EMAILS", "").lower().split(",")
+                admin_emails = [e.strip() for e in admin_emails if e.strip()]
+                print(f"[AUTH DEBUG] Admin emails from config: {admin_emails}", file=sys.stderr, flush=True)
                 
-                for auth in authorizations:
-                    feature = auth.get("feature", "")
-                    print(f"[AUTH DEBUG] Authorization feature: {feature}", file=sys.stderr, flush=True)
-                    if "administrator" in feature.lower() or "admin" in feature.lower():
-                        print(f"[AUTH DEBUG] ✓ User is administrator (feature: {feature})", file=sys.stderr, flush=True)
-                        return True
-        except Exception as e:
-            print(f"[AUTH ERROR] Authorization check error: {e}", file=sys.stderr, flush=True)
-    
-    # Вариант 4: email администратора (для совместимости)
-    email = user_data.get("email", "").lower()
-    print(f"[AUTH DEBUG] User email: {email}", file=sys.stderr, flush=True)
-    
-    if email in ["admin@dspace.org", "admin@localhost", "test@test.edu"]:
-        print(f"[AUTH DEBUG] ✓ User is administrator (default admin email)", file=sys.stderr, flush=True)
-        return True
-    
-    # Для отладки - если пользователь вообще авторизован и других способов нет
-    # Можно добавить переменную окружения ADMIN_EMAILS
-    admin_emails = os.getenv("ADMIN_EMAILS", "").lower().split(",")
-    admin_emails = [e.strip() for e in admin_emails if e.strip()]
-    print(f"[AUTH DEBUG] Admin emails from config: {admin_emails}", file=sys.stderr, flush=True)
-    
-    if email in admin_emails:
-        print(f"[AUTH DEBUG] ✓ User is administrator (in ADMIN_EMAILS)", file=sys.stderr, flush=True)
-        return True
+                if email in admin_emails:
+                    print(f"[AUTH DEBUG] ✓ User is administrator (in ADMIN_EMAILS)", file=sys.stderr, flush=True)
+                    return True
+        except:
+            pass
     
     print(f"[AUTH DEBUG] ✗ User is NOT administrator", file=sys.stderr, flush=True)
     return False
