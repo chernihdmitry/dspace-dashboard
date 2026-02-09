@@ -122,6 +122,7 @@ def create_app():
             token = auth_dspace.authenticate(email, password)
             
             if not token:
+                app.logger.warning("Login failed for %s: no token", email)
                 flash("Невірний email або пароль", "danger")
                 return render_template("login.html")
             
@@ -129,11 +130,13 @@ def create_app():
             user_data = auth_dspace.check_user_status(token)
             
             if not user_data or not user_data.get("authenticated"):
+                app.logger.warning("Login failed for %s: status not authenticated", email)
                 flash("Помилка авторизації", "danger")
                 return render_template("login.html")
             
             # Проверяем права администратора
             if not auth_dspace.is_administrator(token, user_data):
+                app.logger.warning("Login denied for %s: not administrator", email)
                 flash("Доступ тільки для адміністраторів", "danger")
                 return render_template("login.html")
             
