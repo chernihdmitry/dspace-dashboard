@@ -31,6 +31,7 @@ def authenticate(email: str, password: str) -> Optional[str]:
             csrf_token = csrf_cookie
         
         if not csrf_token:
+            return None
         
         # Шаг 2: Отправляем запрос на логин (с CSRF токеном если он есть)
         headers = {
