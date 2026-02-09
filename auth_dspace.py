@@ -20,19 +20,46 @@ def authenticate(email: str, password: str) -> Optional[str]:
     Возвращает JWT токен если успешно, None если нет.
     """
     url = f"{API_BASE}/authn/login"
-    
+
+    def extract_csrf(resp: requests.Response) -> tuple[Optional[str], Optional[str], Optional[str]]:
+        token = resp.headers.get("DSPACE-XSRF-TOKEN")
+        cookie_name = None
+        cookie_val = (
+            resp.cookies.get("DSPACE-XSRF-COOKIE")
+            or resp.cookies.get("DSPACE-XSRF-TOKEN")
+        )
+        if resp.cookies.get("DSPACE-XSRF-COOKIE"):
+            cookie_name = "DSPACE-XSRF-COOKIE"
+        elif resp.cookies.get("DSPACE-XSRF-TOKEN"):
+            cookie_name = "DSPACE-XSRF-TOKEN"
+
+        if not token and cookie_val:
+            token = cookie_val
+        return token, cookie_name, cookie_val
+
     try:
-        # Шаг 1: Получаем CSRF токен
-        csrf_response = requests.get(f"{API_BASE}/authn/status", timeout=10)
-        
-        csrf_token = csrf_response.headers.get("DSPACE-XSRF-TOKEN")
-        csrf_cookie = csrf_response.cookies.get("DSPACE-XSRF-COOKIE")
-        if not csrf_token and csrf_cookie:
-            csrf_token = csrf_cookie
-        
-        if not csrf_token:
-            return None
-        
+        session = requests.Session()
+
+        # Шаг 1: Получаем CSRF токен (если сервер его выдает)
+        csrf_token = None
+        csrf_cookie_name = None
+        csrf_cookie_val = None
+
+        try:
+            csrf_response = session.get(
+                f"{API_BASE}/authn/status",
+                headers={"Accept": "application/json"},
+                timeout=10,
+                allow_redirects=True,
+            )
+            csrf_token, csrf_cookie_name, csrf_cookie_val = extract_csrf(csrf_response)
+        except Exception:
+            # Если не удалось получить CSRF, попробуем логин без него
+            pass
+
+        if csrf_cookie_name and csrf_cookie_val:
+            session.cookies.set(csrf_cookie_name, csrf_cookie_val)
+
         # Шаг 2: Отправляем запрос на логин (с CSRF токеном если он есть)
         headers = {
             "Content-Type": "application/x-www-form-urlencoded",
@@ -40,19 +67,29 @@ def authenticate(email: str, password: str) -> Optional[str]:
         }
         if csrf_token:
             headers["X-XSRF-TOKEN"] = csrf_token
-        
-        cookies = {}
-        if csrf_cookie:
-            cookies["DSPACE-XSRF-COOKIE"] = csrf_cookie
-        
-        response = requests.post(
+
+        response = session.post(
             url,
             data={"user": email, "password": password},
             headers=headers,
-            cookies=cookies,
             timeout=10,
-            allow_redirects=False
+            allow_redirects=False,
         )
+
+        # Если сервер требует CSRF и отдал токен только при попытке логина
+        if response.status_code in (401, 403) and not csrf_token:
+            retry_token, retry_cookie_name, retry_cookie_val = extract_csrf(response)
+            if retry_cookie_name and retry_cookie_val:
+                session.cookies.set(retry_cookie_name, retry_cookie_val)
+            if retry_token:
+                headers["X-XSRF-TOKEN"] = retry_token
+                response = session.post(
+                    url,
+                    data={"user": email, "password": password},
+                    headers=headers,
+                    timeout=10,
+                    allow_redirects=False,
+                )
 
         # DSpace возвращает 200 при успешной авторизации
         if response.status_code == 200:
@@ -64,7 +101,10 @@ def authenticate(email: str, password: str) -> Optional[str]:
                 return auth_header
             
             # Также проверяем обновленный CSRF токен в куках
-            new_csrf_token = response.cookies.get("DSPACE-XSRF-TOKEN") or response.cookies.get("DSPACE-XSRF-COOKIE")
+            new_csrf_token = (
+                response.cookies.get("DSPACE-XSRF-TOKEN")
+                or response.cookies.get("DSPACE-XSRF-COOKIE")
+            )
             if new_csrf_token:
                 return new_csrf_token
             
