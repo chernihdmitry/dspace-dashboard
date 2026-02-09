@@ -1,15 +1,36 @@
 :root{
+  --primary: #2563EB;
+  --primary-hover: #1E40AF;
+  --background: #F4F6F8;
+  --card-bg: #FFFFFF;
+  --text-main: #111827;
+  --text-muted: #6B7280;
+  --border: #E5E7EB;
+  --nav-bg: #FFFFFF;
+  --nav-border: #E5E7EB;
+  --nav-link: #111827;
+  --nav-link-hover-bg: #F4F6F8;
+  --nav-link-hover-border: #E5E7EB;
+  --nav-link-active-bg: rgba(37, 99, 235, 0.1);
+  --nav-link-active: #2563EB;
+  --nav-link-active-border: rgba(37, 99, 235, 0.2);
+  --login-logo-bg: #FFFFFF;
   --card-border: rgba(15, 23, 42, .08);
   --shadow: 0 10px 30px rgba(15, 23, 42, .06);
 }
 
-body{ background: #f6f8fb; }
+body{ background: var(--background); color: var(--text-main); }
+
+.navbar{
+  background: var(--nav-bg) !important;
+  border-bottom-color: var(--nav-border) !important;
+}
 
 .brand-dot{
   width: 10px; height: 10px; border-radius: 50%;
   display:inline-block; margin-right:10px;
-  background: #0d6efd;
-  box-shadow: 0 0 0 6px rgba(13,110,253,.12);
+  background: var(--primary);
+  box-shadow: 0 0 0 6px rgba(37, 99, 235, .12);
   vertical-align: middle;
 }
 
@@ -42,19 +63,19 @@ body{ background: #f6f8fb; }
   padding: 6px 14px;
   border-radius: 10px;
   margin-left: 6px;
-  color: #374151 !important;        /* slate-700 */
+  color: var(--nav-link) !important;
   border: 1px solid transparent;
   transition: all .15s ease;
 }
 
 .navbar .nav-link:hover {
-  background: #f1f5f9;              /* slate-100 */
-  border-color: #e5e7eb;
+  background: var(--nav-link-hover-bg);
+  border-color: var(--nav-link-hover-border);
 }
 
 .navbar .nav-link.active {
-  background: #e0e7ff;              /* indigo-100 */
-  color: #1e40af !important;        /* indigo-800 */
-  border-color: #c7d2fe;
+  background: var(--nav-link-active-bg);
+  color: var(--nav-link-active) !important;
+  border-color: var(--nav-link-active-border);
   font-weight: 600;
 }
