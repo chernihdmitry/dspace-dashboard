@@ -3,15 +3,15 @@ import requests
 from typing import Optional, Dict, Any
 
 DSPACE_API_ROOT = os.getenv("DSPACE_API_ROOT", "/server/api")
-APP_BASE_URL = os.getenv("APP_BASE_URL", "").rstrip("/")
+REST_BASE_URL = os.getenv("REST_BASE_URL", "").rstrip("/")
 
 # Формируем полный URL к API
 if DSPACE_API_ROOT.startswith("http://") or DSPACE_API_ROOT.startswith("https://"):
     API_BASE = DSPACE_API_ROOT.rstrip("/")
 else:
-    if not APP_BASE_URL:
-        raise RuntimeError("APP_BASE_URL must be set for authentication")
-    API_BASE = f"{APP_BASE_URL}{DSPACE_API_ROOT}".rstrip("/")
+    if not REST_BASE_URL:
+        raise RuntimeError("REST_BASE_URL must be set for authentication")
+    API_BASE = f"{REST_BASE_URL}{DSPACE_API_ROOT}".rstrip("/")
 
 
 def authenticate(email: str, password: str) -> Optional[str]:

@@ -24,7 +24,7 @@ Dashboard защищён авторизацией через DSpace REST API. Д
 
 ```bash
 # Базовый URL вашей установки DSpace
-APP_BASE_URL="https://repository.kpi.kharkov.ua"
+REST_BASE_URL="https://repository.kpi.kharkov.ua"
 
 # Путь к REST API (обычно /server/api)
 DSPACE_API_ROOT="/server/api"
@@ -74,7 +74,7 @@ ADMIN_EMAILS="admin@example.com,manager@example.com"
 ### Проблема: "Помилка авторизації"
 
 - Проверьте доступность DSpace REST API
-- Убедитесь, что `APP_BASE_URL` и `DSPACE_API_ROOT` указаны правильно
+- Убедитесь, что `REST_BASE_URL` и `DSPACE_API_ROOT` указаны правильно
 - Проверьте сетевое подключение между dashboard и DSpace
 
 ### Проверка конфигурации

@@ -17,9 +17,9 @@ SOLR_STATS_URL  = f"{SOLR_URL}/statistics/select"
 
 # ВАЖНО:
 # requests НЕ умеет ходить по относительным URL типа "/server/api".
-# Поэтому либо задай DSPACE_API_URL полностью, либо задай APP_BASE_URL (scheme+host),
+# Поэтому либо задай DSPACE_API_ROOT полностью, либо задай REST_BASE_URL (scheme+host),
 # и тогда /server/api станет абсолютным.
-APP_BASE_URL = os.getenv("APP_BASE_URL", "").rstrip("/")  # например https://dspace9-test.dspace.com.ua
+REST_BASE_URL = os.getenv("REST_BASE_URL", "").rstrip("/")  # например https://dspace9-test.dspace.com.ua
 DSPACE_API_ROOT = os.getenv("DSPACE_API_ROOT", "/server/api")  # путь или полный URL
 
 
@@ -51,18 +51,18 @@ def dspace_root_info():
     """
     Возвращает JSON с /server/api (root).
     Требует абсолютный URL. Варианты:
-      - DSPACE_API_ROOT="https://host/server/api"
-      - APP_BASE_URL="https://host" и DSPACE_API_ROOT="/server/api"
+    - DSPACE_API_ROOT="https://host/server/api"
+    - REST_BASE_URL="https://host" и DSPACE_API_ROOT="/server/api"
     """
     if DSPACE_API_ROOT.startswith("http://") or DSPACE_API_ROOT.startswith("https://"):
         url = DSPACE_API_ROOT
     else:
-        if not APP_BASE_URL:
+        if not REST_BASE_URL:
             raise RuntimeError(
-                "DSPACE_API_ROOT is relative, but APP_BASE_URL is not set. "
-                "Set APP_BASE_URL=https://your-host or set DSPACE_API_ROOT as full URL."
+                "DSPACE_API_ROOT is relative, but REST_BASE_URL is not set. "
+                "Set REST_BASE_URL=https://your-host or set DSPACE_API_ROOT as full URL."
             )
-        url = f"{APP_BASE_URL}{DSPACE_API_ROOT}"
+        url = f"{REST_BASE_URL}{DSPACE_API_ROOT}"
 
     r = requests.get(url, timeout=6)
     r.raise_for_status()
