@@ -36,7 +36,7 @@ def authenticate(email: str, password: str) -> Optional[str]:
             csrf_token = csrf_cookie
         
         if not csrf_token:
-            logger.warning("authn/status missing CSRF token")
+            logger.warning("authn/status missing CSRF token; headers=%s cookies=%s", dict(csrf_response.headers), dict(csrf_response.cookies))
             return None
         
         # Шаг 2: Отправляем запрос на логин с CSRF токеном
