@@ -32,6 +32,8 @@ def authenticate(email: str, password: str) -> Optional[str]:
         
         csrf_token = csrf_response.headers.get("DSPACE-XSRF-TOKEN")
         csrf_cookie = csrf_response.cookies.get("DSPACE-XSRF-COOKIE")
+        if not csrf_token and csrf_cookie:
+            csrf_token = csrf_cookie
         
         if not csrf_token:
             logger.warning("authn/status missing CSRF token")
