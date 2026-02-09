@@ -1,12 +1,9 @@
 import os
-import logging
 import requests
 from typing import Optional, Dict, Any
 
 DSPACE_API_ROOT = os.getenv("DSPACE_API_ROOT", "/server/api")
 REST_BASE_URL = os.getenv("REST_BASE_URL", "").rstrip("/")
-
-logger = logging.getLogger("auth_dspace")
 
 # Формируем полный URL к API
 if DSPACE_API_ROOT.startswith("http://") or DSPACE_API_ROOT.startswith("https://"):
@@ -27,8 +24,6 @@ def authenticate(email: str, password: str) -> Optional[str]:
     try:
         # Шаг 1: Получаем CSRF токен
         csrf_response = requests.get(f"{API_BASE}/authn/status", timeout=10)
-        if csrf_response.status_code != 200:
-            logger.warning("authn/status returned %s", csrf_response.status_code)
         
         csrf_token = csrf_response.headers.get("DSPACE-XSRF-TOKEN")
         csrf_cookie = csrf_response.cookies.get("DSPACE-XSRF-COOKIE")
@@ -36,7 +31,6 @@ def authenticate(email: str, password: str) -> Optional[str]:
             csrf_token = csrf_cookie
         
         if not csrf_token:
-            logger.warning("authn/status missing CSRF token; headers=%s cookies=%s", dict(csrf_response.headers), dict(csrf_response.cookies))
         
         # Шаг 2: Отправляем запрос на логин (с CSRF токеном если он есть)
         headers = {
@@ -59,9 +53,6 @@ def authenticate(email: str, password: str) -> Optional[str]:
             allow_redirects=False
         )
 
-        if response.status_code != 200:
-            logger.warning("authn/login returned %s", response.status_code)
-        
         # DSpace возвращает 200 при успешной авторизации
         if response.status_code == 200:
             # Токен приходит в заголовке Authorization
@@ -86,7 +77,6 @@ def authenticate(email: str, password: str) -> Optional[str]:
         
         return None
     except Exception:
-        logger.exception("Authentication error")
         return None
 
 
@@ -100,14 +90,10 @@ def check_user_status(token: str) -> Optional[Dict[str, Any]]:
     try:
         headers = {"Authorization": f"Bearer {token}"}
         response = requests.get(url, headers=headers, timeout=10)
-        if response.status_code != 200:
-            logger.warning("authn/status (with token) returned %s", response.status_code)
-        
         if response.status_code == 200:
             return response.json()
         return None
     except Exception:
-        logger.exception("Status check error")
         return None
 
 
@@ -128,8 +114,6 @@ def is_administrator(token: str, user_data: Optional[Dict] = None) -> bool:
     if eperson_link:
         try:
             response = requests.get(eperson_link, headers=headers, timeout=10)
-            if response.status_code != 200:
-                logger.warning("eperson link returned %s", response.status_code)
             if response.status_code == 200:
                 eperson_data = response.json()
                 
@@ -138,9 +122,6 @@ def is_administrator(token: str, user_data: Optional[Dict] = None) -> bool:
                 if groups_link:
                     try:
                         groups_response = requests.get(groups_link, headers=headers, timeout=10)
-                        if groups_response.status_code != 200:
-                            logger.warning("eperson groups returned %s", groups_response.status_code)
-                        
                         if groups_response.status_code == 200:
                             groups_data = groups_response.json()
                             
@@ -153,7 +134,7 @@ def is_administrator(token: str, user_data: Optional[Dict] = None) -> bool:
                                 if "administrator" in group_name.lower():
                                     return True
                     except Exception:
-                        logger.exception("Failed to fetch user groups")
+                        pass
                 
                 # Проверяем группы в eperson данных
                 groups = eperson_data.get("groups", [])
@@ -163,16 +144,13 @@ def is_administrator(token: str, user_data: Optional[Dict] = None) -> bool:
                         if "administrator" in group_name:
                             return True
         except Exception:
-            logger.exception("Failed to fetch eperson data")
+            pass
     
     # Проверяем specialGroups по ссылке
     special_groups_link = user_data.get("_links", {}).get("specialGroups", {}).get("href")
     if special_groups_link:
         try:
             response = requests.get(special_groups_link, headers=headers, timeout=10)
-            if response.status_code != 200:
-                logger.warning("specialGroups returned %s", response.status_code)
-            
             if response.status_code == 200:
                 groups_data = response.json()
                 groups = groups_data.get("_embedded", {}).get("groups", [])
@@ -183,7 +161,7 @@ def is_administrator(token: str, user_data: Optional[Dict] = None) -> bool:
                     if "administrator" in group_name.lower():
                         return True
         except Exception:
-            logger.exception("Failed to fetch special groups")
+            pass
     
     # Проверяем группы пользователя в user_data (если есть)
     groups = user_data.get("groups", [])
@@ -205,8 +183,6 @@ def is_administrator(token: str, user_data: Optional[Dict] = None) -> bool:
     if eperson_link:
         try:
             response = requests.get(eperson_link, headers=headers, timeout=10)
-            if response.status_code != 200:
-                logger.warning("eperson link (for admin emails) returned %s", response.status_code)
             if response.status_code == 200:
                 email = response.json().get("email", "").lower()
                 
@@ -217,7 +193,7 @@ def is_administrator(token: str, user_data: Optional[Dict] = None) -> bool:
                 if email in admin_emails:
                     return True
         except Exception:
-            logger.exception("Failed to fetch eperson email for ADMIN_EMAILS")
+            pass
     
     return False
 
@@ -231,9 +207,6 @@ def logout(token: str) -> bool:
     try:
         headers = {"Authorization": f"Bearer {token}"}
         response = requests.post(url, headers=headers, timeout=10)
-        if response.status_code not in [200, 204]:
-            logger.warning("authn/logout returned %s", response.status_code)
         return response.status_code in [200, 204]
     except Exception:
-        logger.exception("Logout error")
         return False
