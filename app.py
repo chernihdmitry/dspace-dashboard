@@ -81,8 +81,7 @@ def create_app():
     # ---- Logging ----
     auth_logger = logging.getLogger("auth_dspace")
     auth_logger.setLevel(logging.INFO)
-    auth_logger.handlers = app.logger.handlers
-    auth_logger.propagate = False
+    auth_logger.propagate = True
 
     # ---- Cache ----
     app.config["CACHE_TYPE"] = os.getenv("CACHE_TYPE", "SimpleCache")

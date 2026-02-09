@@ -34,6 +34,7 @@ def authenticate(email: str, password: str) -> Optional[str]:
         csrf_cookie = csrf_response.cookies.get("DSPACE-XSRF-COOKIE")
         
         if not csrf_token:
+            logger.warning("authn/status missing CSRF token")
             return None
         
         # Шаг 2: Отправляем запрос на логин с CSRF токеном
