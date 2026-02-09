@@ -60,7 +60,7 @@
 
 
 <div class="text-secondary small mb-2">
-  Період: <span class="fw-semibold">{{ month_name }} {{ year }}</span>
+  Період: <span class="fw-semibold">{% if month == 0 %}{{ month_name }}{% else %}{{ month_name }} {{ year }}{% endif %}</span>
 </div>
 
 <div class="card card-soft">
