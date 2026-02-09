@@ -187,6 +187,10 @@ def create_app():
 
     @app.get("/submitters/<int:year>/<int:month>")
     def submitters_month(year: int, month: int):
+        # Месяц 0 означает "весь год"
+        if month == 0:
+            return submitters_year_view(year)
+        
         if month < 1 or month > 12:
             return redirect(url_for("submitters"))
 
@@ -223,6 +227,80 @@ def create_app():
             month_names=MONTH_NAMES_UA,
             today_year=today.year,
             today_month=today.month,
+        )
+
+    def submitters_year_view(year: int):
+        """Внутренняя функция для отображения данных за весь год"""
+        today = date.today()
+        years = list(range(START_YEAR, today.year + 1))
+        months = list(range(1, 13))
+
+        key = f"submitters_{year}_all_v1"
+        rows = cache.get(key)
+
+        error = None
+        if rows is None:
+            try:
+                rows = solr.submitters_for_year(year, limit=300)
+                cache.set(key, rows, timeout=CACHE_TTL_SECONDS)
+            except Exception as e:
+                app.logger.exception("Submitters for year failed")
+                rows = []
+                error = str(e)
+
+        return render_template(
+            "submitters.html",
+            year=year,
+            month=0,  # 0 = весь год
+            month_name=f"Усі місяці {year} року",
+            rows=rows,
+            error=error,
+            years=years,
+            months=months,
+            selected_year=year,
+            selected_month=0,
+            month_names=MONTH_NAMES_UA,
+            today_year=today.year,
+            today_month=today.month,
+        )
+
+    @app.get("/submitters/heatmap")
+    @app.get("/submitters/heatmap/<int:year>")
+    def submitters_heatmap(year: int = None):
+        """Страница с тепловой картой отправителей по месяцам"""
+        today = date.today()
+        
+        # Если год не указан, используем текущий
+        if year is None:
+            year = today.year
+        
+        # Проверка диапазона года
+        if year < START_YEAR or year > today.year:
+            year = today.year
+        
+        # Формируем список доступных годов
+        years = list(range(START_YEAR, today.year + 1))
+        
+        key = f"submitters_heatmap_{year}_v2"
+        heatmap_data = cache.get(key)
+        
+        error = None
+        if heatmap_data is None:
+            try:
+                heatmap_data = solr.submitters_heatmap_data(year, limit=30)
+                cache.set(key, heatmap_data, timeout=CACHE_TTL_SECONDS)
+            except Exception as e:
+                app.logger.exception("Heatmap data failed")
+                heatmap_data = {"months": [], "submitters": [], "data": []}
+                error = str(e)
+        
+        return render_template(
+            "submitters_heatmap.html",
+            heatmap_data=heatmap_data,
+            error=error,
+            year=year,
+            years=years,
+            selected_year=year,
         )
 
     @app.get("/health")

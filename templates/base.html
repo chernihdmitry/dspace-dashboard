@@ -42,7 +42,7 @@
         </li>
 
         <li class="nav-item">
-        <a class="nav-link {% if request.endpoint == 'submitters_month' %}active{% endif %}"
+        <a class="nav-link {% if request.endpoint in ['submitters_month', 'submitters_heatmap'] %}active{% endif %}"
             href="{{ url_for('submitters') }}">
             Відправники
         </a>

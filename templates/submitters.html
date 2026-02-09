@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block page_title %}Відправники — {{ month_name }} {{ year }}{% endblock %}
+{% block page_title %}Відправники — {% if month == 0 %}{{ month_name }}{% else %}{{ month_name }} {{ year }}{% endif %}{% endblock %}
 
 {% block content %}
 {% if error %}
@@ -23,6 +23,7 @@
     <div>
       <label class="form-label small text-secondary mb-1">Місяць</label>
       <select class="form-select" id="monthSel">
+        <option value="0" {% if selected_month == 0 %}selected{% endif %}>Усі</option>
         {% for m in months %}
           <option value="{{ m }}" {% if m == selected_month %}selected{% endif %}>
             {{ "%02d"|format(m) }} — {{ month_names[m] }}
@@ -36,6 +37,11 @@
     <a class="btn btn-outline-secondary"
        href="{{ url_for('submitters_month', year=today_year, month=today_month) }}">
       Поточний місяць
+    </a>
+
+    <a class="btn btn-outline-info"
+       href="{{ url_for('submitters_heatmap') }}">
+      <i class="bi bi-grid-3x3-gap"></i> Теплова карта
     </a>
   </div>
 </form>

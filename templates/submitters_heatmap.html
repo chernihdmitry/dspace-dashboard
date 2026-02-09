@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% block page_title %}Теплова карта завантажень — {{ year }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-end mb-3">
+  <a href="{{ url_for('submitters') }}" class="btn btn-outline-secondary">
+    <i class="bi bi-arrow-left"></i> Назад до відправників
+  </a>
+</div>
+
+<form class="card card-soft mb-3" id="yearForm">
+  <div class="card-body d-flex flex-wrap gap-2 align-items-end">
+    <div>
+      <label class="form-label small text-secondary mb-1">Рік</label>
+      <select class="form-select" id="yearSel">
+        {% for y in years %}
+          <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Показати</button>
+  </div>
+</form>
+
+<script>
+  document.getElementById('yearForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    const y = document.getElementById('yearSel').value;
+    const base = {{ url_for('submitters_heatmap', year=0)|tojson }};
+    window.location.href = base.replace('/0', `/${y}`);
+  });
+</script>
+
+{% if error %}
+<div class="alert alert-danger">
+  <div class="fw-semibold">Помилка</div>
+  <pre class="mb-0 small" style="white-space:pre-wrap">{{ error }}</pre>
+</div>
+{% endif %}
+
+<div class="card card-soft">
+  <div class="card-body">
+    {% if heatmap_data.submitters|length > 0 %}
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered text-center align-middle mb-0" id="heatmapTable">
+        <thead>
+          <tr class="text-secondary small">
+            <th style="min-width: 200px;" class="text-start sticky-column">Відправник</th>
+            {% for month in heatmap_data.months %}
+              <th style="min-width: 70px; writing-mode: vertical-lr; transform: rotate(180deg);">
+                {{ month }}
+              </th>
+            {% endfor %}
+            <th style="min-width: 80px;">Всього</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for i in range(heatmap_data.submitters|length) %}
+          <tr>
+            <td class="text-start text-truncate sticky-column bg-white" style="max-width: 250px;">
+              <strong>{{ heatmap_data.submitters[i] }}</strong>
+            </td>
+            {% set ns = namespace(row_total=0) %}
+            {% for j in range(heatmap_data.months|length) %}
+              {% set count = heatmap_data.data[i][j] %}
+              {% set ns.row_total = ns.row_total + count %}
+              {% if count == 0 %}
+                <td class="bg-light text-secondary">—</td>
+              {% elif count < 25 %}
+                <td style="background-color: #f7fcf5;">{{ count }}</td>
+              {% elif count < 50 %}
+                <td style="background-color: #e5f5e0;">{{ count }}</td>
+              {% elif count < 75 %}
+                <td style="background-color: #c7e9c0;">{{ count }}</td>
+              {% elif count < 100 %}
+                <td style="background-color: #a1d99b;">{{ count }}</td>
+              {% elif count < 125 %}
+                <td style="background-color: #74c476;">{{ count }}</td>
+              {% elif count < 150 %}
+                <td style="background-color: #41ab5d;">{{ count }}</td>
+              {% elif count < 175 %}
+                <td style="background-color: #238b45; color: white;">{{ count }}</td>
+              {% elif count < 200 %}
+                <td style="background-color: #006d2c; color: white;">{{ count }}</td>
+              {% else %}
+                <td style="background-color: #00441b; color: white;">{{ count }}</td>
+              {% endif %}
+            {% endfor %}
+            <td class="fw-bold bg-light">{{ ns.row_total|fmt }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="mt-4">
+      <h5 class="small text-secondary mb-2">Легенда:</h5>
+      <div class="d-flex gap-2 flex-wrap small">
+        <div class="d-flex align-items-center">
+          <div style="width: 35px; height: 20px; background-color: #f7fcf5; border: 1px solid #ddd;"></div>
+          <span class="ms-1">1-24</span>
+        </div>
+        <div class="d-flex align-items-center">
+          <div style="width: 35px; height: 20px; background-color: #e5f5e0; border: 1px solid #ddd;"></div>
+          <span class="ms-1">25-49</span>
+        </div>
+        <div class="d-flex align-items-center">
+          <div style="width: 35px; height: 20px; background-color: #c7e9c0; border: 1px solid #ddd;"></div>
+          <span class="ms-1">50-74</span>
+        </div>
+        <div class="d-flex align-items-center">
+          <div style="width: 35px; height: 20px; background-color: #a1d99b; border: 1px solid #ddd;"></div>
+          <span class="ms-1">75-99</span>
+        </div>
+        <div class="d-flex align-items-center">
+          <div style="width: 35px; height: 20px; background-color: #74c476; border: 1px solid #ddd;"></div>
+          <span class="ms-1">100-124</span>
+        </div>
+        <div class="d-flex align-items-center">
+          <div style="width: 35px; height: 20px; background-color: #41ab5d; border: 1px solid #ddd;"></div>
+          <span class="ms-1">125-149</span>
+        </div>
+        <div class="d-flex align-items-center">
+          <div style="width: 35px; height: 20px; background-color: #238b45; border: 1px solid #ddd;"></div>
+          <span class="ms-1 text-white px-1" style="background-color: #238b45;">150-174</span>
+        </div>
+        <div class="d-flex align-items-center">
+          <div style="width: 35px; height: 20px; background-color: #006d2c; border: 1px solid #ddd;"></div>
+          <span class="ms-1 text-white px-1" style="background-color: #006d2c;">175-199</span>
+        </div>
+        <div class="d-flex align-items-center">
+          <div style="width: 35px; height: 20px; background-color: #00441b; border: 1px solid #ddd;"></div>
+          <span class="ms-1 text-white px-1" style="background-color: #00441b;">200+</span>
+        </div>
+      </div>
+    </div>
+
+    {% else %}
+    <div class="text-secondary">Немає даних для відображення</div>
+    {% endif %}
+  </div>
+</div>
+
+<style>
+  #heatmapTable {
+    font-size: 0.85rem;
+  }
+  
+  .sticky-column {
+    position: sticky;
+    left: 0;
+    z-index: 10;
+    background-color: white;
+    border-right: 2px solid #dee2e6 !important;
+  }
+  
+  #heatmapTable thead th.sticky-column {
+    z-index: 11;
+  }
+  
+  #heatmapTable tbody td {
+    padding: 8px 4px;
+  }
+  
+  #heatmapTable thead th {
+    padding: 8px 4px;
+    font-weight: 600;
+  }
+</style>
+{% endblock %}

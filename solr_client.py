@@ -406,3 +406,136 @@ def submitters_for_month(year: int, month: int, limit: int = 200):
     buckets = j.get("facets", {}).get("submitters", {}).get("buckets", [])
     # унифицируем под шаблоны: key/count
     return [{"submitter": b.get("val", ""), "count": int(b.get("count", 0))} for b in buckets]
+
+
+def submitters_for_year(year: int, limit: int = 200):
+    """Получить данные по отправителям за весь год"""
+    start = datetime(year, 1, 1, 0, 0, 0)
+    today = date.today()
+    
+    # Если это текущий год, берём данные до сегодня
+    if year == today.year:
+        end = datetime.combine(today, datetime.max.time())
+    else:
+        end = datetime(year, 12, 31, 23, 59, 59)
+
+    facet = {
+        "submitters": {
+            "type": "terms",
+            "field": "submitter_keyword",
+            "limit": limit,
+            "mincount": 1,
+            "sort": "count desc",
+        }
+    }
+
+    params = {
+        "q": "archived:true",
+        "fq": [
+            "-entityType:Person",
+            "discoverable:true",
+            "withdrawn:false",
+            f"dc.date.accessioned_dt:[{iso_z(start)} TO {iso_z(end)}]",
+        ],
+        "rows": 0,
+        "json.facet": json.dumps(facet),
+    }
+
+    j = _get(SOLR_SEARCH_URL, params)
+    buckets = j.get("facets", {}).get("submitters", {}).get("buckets", [])
+    return [{"submitter": b.get("val", ""), "count": int(b.get("count", 0))} for b in buckets]
+
+
+def submitters_heatmap_data(year: int, limit: int = 50):
+    """
+    Получить данные для тепловой карты отправителей по месяцам
+    за конкретный год (12 месяцев)
+    
+    Возвращает:
+    {
+        "months": ["Січень", "Лютий", ...],
+        "submitters": ["User1", "User2", ...],
+        "data": [[count1, count2, ...], [count3, count4, ...], ...]
+            где data[submitter_index][month_index] = количество документов
+    }
+    """
+    today = date.today()
+    
+    # Собираем все месяцы года (1-12)
+    months = []
+    monthly_submitters = {}  # {month_key: {submitter: count}}
+    
+    for month in range(1, 13):
+        # Если это будущий месяц - пропускаем
+        if year == today.year and month > today.month:
+            break
+            
+        # Получаем данные за месяц
+        try:
+            submitters_data = submitters_for_month(year, month, limit=limit)
+            
+            month_key = f"{year}-{month:02d}"
+            monthly_submitters[month_key] = {}
+            
+            for item in submitters_data:
+                submitter = item.get("submitter", "")
+                count = item.get("count", 0)
+                if submitter:
+                    monthly_submitters[month_key][submitter] = count
+                    
+        except Exception:
+            # Пропускаем месяц если ошибка
+            pass
+        
+        months.append(date(year, month, 1))
+    
+    # Собираем уникальный список всех отправителей
+    all_submitters = set()
+    for month_data in monthly_submitters.values():
+        all_submitters.update(month_data.keys())
+    
+    # Сортируем отправителей по общему количеству документов
+    submitter_totals = {}
+    for submitter in all_submitters:
+        total = sum(
+            month_data.get(submitter, 0) 
+            for month_data in monthly_submitters.values()
+        )
+        submitter_totals[submitter] = total
+    
+    sorted_submitters = sorted(
+        submitter_totals.items(), 
+        key=lambda x: x[1], 
+        reverse=True
+    )[:limit]
+    
+    submitters_list = [s[0] for s in sorted_submitters]
+    
+    # Формируем матрицу данных
+    data_matrix = []
+    for submitter in submitters_list:
+        row = []
+        for month_date in months:
+            month_key = f"{month_date.year}-{month_date.month:02d}"
+            count = monthly_submitters.get(month_key, {}).get(submitter, 0)
+            row.append(count)
+        data_matrix.append(row)
+    
+    # Названия месяцев на украинском (без года, т.к. год выбран в селекторе)
+    month_names_ua = {
+        1: 'Січень', 2: 'Лютий', 3: 'Березень', 4: 'Квітень',
+        5: 'Травень', 6: 'Червень', 7: 'Липень', 8: 'Серпень',
+        9: 'Вересень', 10: 'Жовтень', 11: 'Листопад', 12: 'Грудень'
+    }
+    
+    month_labels = [
+        month_names_ua[m.month]
+        for m in months
+    ]
+    
+    return {
+        "months": month_labels,
+        "submitters": submitters_list,
+        "data": data_matrix,
+    }
+
