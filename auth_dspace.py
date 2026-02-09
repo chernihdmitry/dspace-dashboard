@@ -193,7 +193,6 @@ def is_administrator(token: str, user_data: Optional[Dict] = None) -> bool:
                 # Проверяем группы в eperson данных
                 groups = eperson_data.get("groups", [])
                 if groups:
-                if groups:
                     print(f"[AUTH DEBUG] EPerson groups: {groups}", file=sys.stderr, flush=True)
                     for group in groups:
                         group_name = group.get("name", "").lower()
