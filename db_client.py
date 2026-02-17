@@ -80,6 +80,52 @@ def _fetch_columns(cur, table: str) -> List[str]:
     return [row[0] for row in cur.fetchall()]
 
 
+def _metadata_field_id(schema: str, element: str, qualifier: Optional[str]) -> Optional[int]:
+    sql = (
+        "select mfr.metadata_field_id "
+        "from metadatafieldregistry mfr "
+        "join metadataschemaregistry msr on mfr.metadata_schema_id = msr.metadata_schema_id "
+        "where msr.short_id = %s and mfr.element = %s "
+    )
+    params: List[Any] = [schema, element]
+
+    if qualifier is None:
+        sql += "and mfr.qualifier is null "
+    else:
+        sql += "and mfr.qualifier = %s "
+        params.append(qualifier)
+
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, tuple(params))
+            row = cur.fetchone()
+            if row:
+                return int(row[0])
+    return None
+
+
+def _collection_titles_by_uuid(collection_uuids: List[str]) -> Dict[str, str]:
+    if not collection_uuids:
+        return {}
+
+    title_id = _metadata_field_id("dc", "title", None)
+    if not title_id:
+        return {}
+
+    sql = (
+        "select mv.dspace_object_id::text, max(mv.text_value) "
+        "from metadatavalue mv "
+        "where mv.metadata_field_id = %s "
+        "and mv.dspace_object_id = any(%s) "
+        "group by mv.dspace_object_id"
+    )
+
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (title_id, collection_uuids))
+            return {row[0]: row[1] for row in cur.fetchall()}
+
+
 def edited_docs_by_editor_attempts(year: int, month: int, limit: int = 200):
     start_dt, end_dt = _period_range(year, month)
     attempts: List[Dict[str, Any]] = []
@@ -192,26 +238,20 @@ def _submitter_collections_query(include_submitter_filter: bool) -> str:
         "  select mv.dspace_object_id as item_uuid, "
         "         mv.text_value::timestamptz as accessioned_at "
         "  from metadatavalue mv "
-        "  join metadatafieldregistry mfr on mv.metadata_field_id = mfr.metadata_field_id "
-        "  join metadataschemaregistry msr on mfr.metadata_schema_id = msr.metadata_schema_id "
-        "  where msr.short_id = 'dc' and mfr.element = 'date' and mfr.qualifier = 'accessioned' "
+        "  where mv.metadata_field_id = %s "
         "    and mv.text_value ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'"
         "), collection_titles as ("
         "  select mv.dspace_object_id as collection_uuid, "
         "         max(mv.text_value) as title "
         "  from metadatavalue mv "
-        "  join metadatafieldregistry mfr on mv.metadata_field_id = mfr.metadata_field_id "
-        "  join metadataschemaregistry msr on mfr.metadata_schema_id = msr.metadata_schema_id "
-        "  where msr.short_id = 'dc' and mfr.element = 'title' "
-        "    and (mfr.qualifier is null or mfr.qualifier = '') "
+        "  where mv.metadata_field_id = %s "
         "  group by mv.dspace_object_id"
         "), eperson_names as ("
         "  select mv.dspace_object_id as eperson_uuid, "
-        "         max(case when mfr.element = 'firstname' then mv.text_value end) as firstname, "
-        "         max(case when mfr.element = 'lastname' then mv.text_value end) as lastname "
+        "         max(case when mv.metadata_field_id = %s then mv.text_value end) as firstname, "
+        "         max(case when mv.metadata_field_id = %s then mv.text_value end) as lastname "
         "  from metadatavalue mv "
-        "  join metadatafieldregistry mfr on mv.metadata_field_id = mfr.metadata_field_id "
-        "  where mfr.element in ('firstname', 'lastname') "
+        "  where mv.metadata_field_id in (%s, %s) "
         "  group by mv.dspace_object_id"
         ") "
         "select e.uuid as submitter_uuid, "
@@ -236,10 +276,30 @@ def submitter_totals_by_period(year: int, month: int):
     start_dt, end_dt = _period_range(year, month)
     sql = _submitter_collections_query(False)
 
+    accessioned_id = _metadata_field_id("dc", "date", "accessioned")
+    title_id = _metadata_field_id("dc", "title", None)
+    firstname_id = _metadata_field_id("eperson", "firstname", None)
+    lastname_id = _metadata_field_id("eperson", "lastname", None)
+
+    if not all([accessioned_id, title_id, firstname_id, lastname_id]):
+        raise RuntimeError("Metadata field registry is missing required fields")
+
     rows = []
     with _connect() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, (start_dt, end_dt))
+            cur.execute(
+                sql,
+                (
+                    accessioned_id,
+                    title_id,
+                    firstname_id,
+                    lastname_id,
+                    firstname_id,
+                    lastname_id,
+                    start_dt,
+                    end_dt,
+                ),
+            )
             rows = cur.fetchall()
 
     grouped: Dict[str, Dict[str, Any]] = {}
@@ -260,41 +320,66 @@ def submitter_totals_by_period(year: int, month: int):
 
 def submitter_collections_for_submitter(year: int, month: int, submitter_uuid: str):
     start_dt, end_dt = _period_range(year, month)
-    sql = _submitter_collections_query(True)
+    accessioned_id = _metadata_field_id("dc", "date", "accessioned")
+    if not accessioned_id:
+        raise RuntimeError("Metadata field registry is missing required fields")
+
+    sql = (
+        "with accessioned as ("
+        "  select mv.dspace_object_id as item_uuid, "
+        "         mv.text_value::timestamptz as accessioned_at "
+        "  from metadatavalue mv "
+        "  where mv.metadata_field_id = %s "
+        "    and mv.text_value ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'"
+        ") "
+        "select i.owning_collection::text, count(distinct i.uuid) "
+        "from item i "
+        "join accessioned a on a.item_uuid = i.uuid "
+        "where i.in_archive = true and i.withdrawn = false and i.discoverable = true "
+        "  and a.accessioned_at >= %s and a.accessioned_at <= %s "
+        "  and i.submitter_id::text = %s "
+        "group by i.owning_collection "
+        "order by count(distinct i.uuid) desc"
+    )
 
     rows = []
     with _connect() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, (start_dt, end_dt, submitter_uuid))
+            cur.execute(sql, (accessioned_id, start_dt, end_dt, submitter_uuid))
             rows = cur.fetchall()
 
+    collection_ids = [row[0] for row in rows]
+    titles = _collection_titles_by_uuid(collection_ids)
+
     collections = []
-    submitter_name = None
-    for _, name, collection, count in rows:
-        submitter_name = name
+    for collection_id, count in rows:
         collections.append({
-            "collection": collection,
+            "collection": titles.get(collection_id, collection_id),
             "count": int(count),
         })
 
-    if not submitter_name:
-        submitter_name = submitter_name_by_uuid(submitter_uuid)
+    submitter_name = submitter_name_by_uuid(submitter_uuid) or submitter_uuid
 
     return {
-        "submitter": submitter_name or submitter_uuid,
+        "submitter": submitter_name,
         "collections": collections,
     }
 
 
 def submitter_name_by_uuid(submitter_uuid: str) -> Optional[str]:
+    firstname_id = _metadata_field_id("eperson", "firstname", None)
+    lastname_id = _metadata_field_id("eperson", "lastname", None)
+
+    if not firstname_id or not lastname_id:
+        return None
+
     sql = (
         "with eperson_names as ("
         "  select mv.dspace_object_id as eperson_uuid, "
-        "         max(case when mfr.element = 'firstname' then mv.text_value end) as firstname, "
-        "         max(case when mfr.element = 'lastname' then mv.text_value end) as lastname "
+        "         max(case when mv.metadata_field_id = %s then mv.text_value end) as firstname, "
+        "         max(case when mv.metadata_field_id = %s then mv.text_value end) as lastname "
         "  from metadatavalue mv "
-        "  join metadatafieldregistry mfr on mv.metadata_field_id = mfr.metadata_field_id "
-        "  where mfr.element in ('firstname', 'lastname') "
+        "  where mv.metadata_field_id in (%s, %s) "
         "  group by mv.dspace_object_id"
         ") "
         "select coalesce(trim(en.firstname || ' ' || en.lastname), e.email) "
@@ -305,7 +390,16 @@ def submitter_name_by_uuid(submitter_uuid: str) -> Optional[str]:
 
     with _connect() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, (submitter_uuid,))
+            cur.execute(
+                sql,
+                (
+                    firstname_id,
+                    lastname_id,
+                    firstname_id,
+                    lastname_id,
+                    submitter_uuid,
+                ),
+            )
             row = cur.fetchone()
             if row:
                 return row[0]

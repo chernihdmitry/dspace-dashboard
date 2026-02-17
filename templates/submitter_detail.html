@@ -66,7 +66,9 @@
           </tr>
         </thead>
         <tbody>
+          {% set ns = namespace(total=0) %}
           {% for row in collections %}
+          {% set ns.total = ns.total + row.count %}
           <tr>
             <td class="text-truncate" style="max-width: 520px">{{ row.collection }}</td>
             <td class="fw-semibold text-end">{{ row.count|fmt }}</td>
@@ -74,6 +76,12 @@
           {% else %}
           <tr><td colspan="2" class="text-secondary">Немає даних</td></tr>
           {% endfor %}
+          {% if collections|length > 0 %}
+          <tr class="table-active border-top border-2">
+            <td class="fw-bold">Усього</td>
+            <td class="fw-bold text-end">{{ ns.total|fmt }}</td>
+          </tr>
+          {% endif %}
         </tbody>
       </table>
     </div>

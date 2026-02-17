@@ -115,6 +115,8 @@ def create_app():
     def login():
         if current_user.is_authenticated:
             return redirect(url_for("index"))
+
+        remembered_email = session.get("email", "")
         
         if request.method == "POST":
             email = request.form.get("email", "").strip()
@@ -122,30 +124,30 @@ def create_app():
             
             if not email or not password:
                 flash("Введіть email та пароль", "danger")
-                return render_template("login.html")
+                return render_template("login.html", remembered_email=email)
             
             # Авторизация через DSpace API
             try:
                 token = auth_dspace.authenticate(email, password)
             except RuntimeError as exc:
                 flash(str(exc), "danger")
-                return render_template("login.html")
+                return render_template("login.html", remembered_email=email)
             
             if not token:
                 flash("Невірний email або пароль", "danger")
-                return render_template("login.html")
+                return render_template("login.html", remembered_email=email)
             
             # Проверяем статус пользователя
             user_data = auth_dspace.check_user_status(token)
             
             if not user_data or not user_data.get("authenticated"):
                 flash("Помилка авторизації", "danger")
-                return render_template("login.html")
+                return render_template("login.html", remembered_email=email)
             
             # Проверяем права администратора
             if not auth_dspace.is_administrator(token, user_data):
                 flash("Доступ тільки для адміністраторів", "danger")
-                return render_template("login.html")
+                return render_template("login.html", remembered_email=email)
             
             # Создаем пользователя и логиним
             user_id = user_data.get("uuid") or user_data.get("id") or email
@@ -164,7 +166,7 @@ def create_app():
                 return redirect(next_page)
             return redirect(url_for("index"))
         
-        return render_template("login.html")
+        return render_template("login.html", remembered_email=remembered_email)
 
     @app.route("/logout")
     @login_required
