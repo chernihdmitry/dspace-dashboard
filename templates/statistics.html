@@ -1,5 +1,8 @@
 {% extends "base.html" %}
 {% block page_title %}Завантаження — {% if month == 0 %}{{ month_name }}{% else %}{{ month_name }} {{ year }}{% endif %}{% endblock %}
+{% block page_hint %}
+  <div class="text-secondary small">Показуємо перегляди сторінок документів та завантаження файлів за вибраний період.</div>
+{% endblock %}
 
 {% block content %}
 {% if error %}

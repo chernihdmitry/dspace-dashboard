@@ -105,6 +105,9 @@ def create_app():
             "APP_VERSION": APP_VERSION,
             "today_str": date.today().strftime("%d.%m.%Y"),
             "matomo_configured": matomo.is_configured(),
+            "profiles_configured": bool(
+                get_config_value("researcher-profile.collection.uuid", "").strip()
+            ),
         }
 
     # ----------------------------
@@ -559,6 +562,109 @@ def create_app():
             submitter=detail.get("submitter", submitter_id),
             submitter_id=submitter_id,
             collections=detail.get("collections", []),
+            error=error,
+            year=year,
+            month=month,
+            month_name=month_name,
+            years=years,
+            months=months,
+            selected_year=year,
+            selected_month=month,
+            month_names=MONTH_NAMES_UA,
+        )
+
+    @app.get("/researcher-profiles")
+    @login_required
+    def researcher_profiles():
+        today = date.today()
+        return redirect(url_for("researcher_profiles_period", year=today.year, month=0))
+
+    @app.get("/researcher-profiles/<int:year>/<int:month>")
+    @login_required
+    def researcher_profiles_period(year: int, month: int):
+        if month < 0 or month > 12:
+            return redirect(url_for("researcher_profiles"))
+
+        collection_uuid = get_config_value("researcher-profile.collection.uuid", "").strip()
+        if not collection_uuid:
+            return render_template(
+                "researcher_profiles.html",
+                rows=[],
+                error="ORCID синхронізація не налаштована",
+                year=year,
+                month=month,
+                month_name="",
+                years=[],
+                months=[],
+                selected_year=year,
+                selected_month=month,
+                month_names=MONTH_NAMES_UA,
+            )
+
+        today = date.today()
+        years = list(range(START_YEAR, today.year + 1))
+        months = list(range(1, 13))
+
+        error = None
+        rows = []
+        try:
+            rows = db.researcher_profiles_by_period(year, month, collection_uuid)
+        except Exception as exc:
+            app.logger.exception("Researcher profiles failed")
+            error = str(exc)
+
+        month_name = MONTH_NAMES_UA.get(month, str(month)) if month else f"Усі місяці {year} року"
+
+        return render_template(
+            "researcher_profiles.html",
+            rows=rows,
+            error=error,
+            year=year,
+            month=month,
+            month_name=month_name,
+            years=years,
+            months=months,
+            selected_year=year,
+            selected_month=month,
+            month_names=MONTH_NAMES_UA,
+        )
+
+    @app.get("/researcher-profiles/user/<string:owner_id>/<int:year>/<int:month>")
+    @login_required
+    def researcher_profile_detail(owner_id: str, year: int, month: int):
+        if month < 0 or month > 12:
+            return redirect(url_for("researcher_profiles"))
+
+        collection_uuid = get_config_value("researcher-profile.collection.uuid", "").strip()
+        if not collection_uuid:
+            return redirect(url_for("researcher_profiles"))
+
+        today = date.today()
+        years = list(range(START_YEAR, today.year + 1))
+        months = list(range(1, 13))
+
+        error = None
+        publications = []
+        profile_name = owner_id
+        try:
+            rows = db.researcher_profiles_by_period(year, month, collection_uuid)
+            for row in rows:
+                if row.get("owner_id") == owner_id:
+                    profile_name = row.get("profile") or owner_id
+                    break
+            publications = db.researcher_profile_publications(year, month, owner_id)
+        except Exception as exc:
+            app.logger.exception("Researcher profile detail failed")
+            error = str(exc)
+
+        month_name = MONTH_NAMES_UA.get(month, str(month)) if month else f"Усі місяці {year} року"
+
+        return render_template(
+            "researcher_profile_detail.html",
+            owner_id=owner_id,
+            profile=profile_name,
+            publications=publications,
+            ui_base_url=get_config_value("dspace.ui.url", "").rstrip("/"),
             error=error,
             year=year,
             month=month,

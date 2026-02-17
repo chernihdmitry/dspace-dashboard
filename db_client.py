@@ -1,4 +1,5 @@
 import os
+import time
 from datetime import datetime, date, timedelta
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
@@ -6,6 +7,30 @@ from urllib.parse import urlparse
 import psycopg
 
 from dspace_config import get_config_value
+
+_cache: Dict[str, Any] = {}
+_cache_ttl: Dict[str, float] = {}
+_metadata_field_cache: Dict[str, Optional[int]] = {}
+
+
+def _cache_ttl_seconds() -> int:
+    return int(os.getenv("CACHE_TTL_SECONDS", "300"))
+
+
+def _cache_get(key: str):
+    ttl = _cache_ttl_seconds()
+    expires_at = _cache_ttl.get(key)
+    if expires_at is None or expires_at < time.time():
+        _cache.pop(key, None)
+        _cache_ttl.pop(key, None)
+        return None
+    return _cache.get(key)
+
+
+def _cache_set(key: str, value: Any):
+    ttl = _cache_ttl_seconds()
+    _cache[key] = value
+    _cache_ttl[key] = time.time() + ttl
 
 
 def _parse_db_url(url: str) -> Optional[Dict[str, Any]]:
@@ -81,6 +106,10 @@ def _fetch_columns(cur, table: str) -> List[str]:
 
 
 def _metadata_field_id(schema: str, element: str, qualifier: Optional[str]) -> Optional[int]:
+    cache_key = f"{schema}:{element}:{qualifier}"
+    if cache_key in _metadata_field_cache:
+        return _metadata_field_cache[cache_key]
+
     sql = (
         "select mfr.metadata_field_id "
         "from metadatafieldregistry mfr "
@@ -100,7 +129,10 @@ def _metadata_field_id(schema: str, element: str, qualifier: Optional[str]) -> O
             cur.execute(sql, tuple(params))
             row = cur.fetchone()
             if row:
-                return int(row[0])
+                value = int(row[0])
+                _metadata_field_cache[cache_key] = value
+                return value
+    _metadata_field_cache[cache_key] = None
     return None
 
 
@@ -279,6 +311,11 @@ def _submitter_collections_query(include_submitter_filter: bool, exclude_collect
 
 
 def submitter_totals_by_period(year: int, month: int):
+    cache_key = f"submitters:totals:{year}:{month}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     start_dt, end_dt = _period_range(year, month)
     excluded_uuid = _excluded_collection_uuid()
     sql = _submitter_collections_query(False, bool(excluded_uuid))
@@ -322,10 +359,16 @@ def submitter_totals_by_period(year: int, month: int):
 
     submitters = list(grouped.values())
     submitters.sort(key=lambda x: x["total"], reverse=True)
+    _cache_set(cache_key, submitters)
     return submitters
 
 
 def submitter_collections_for_submitter(year: int, month: int, submitter_uuid: str):
+    cache_key = f"submitters:detail:{submitter_uuid}:{year}:{month}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     start_dt, end_dt = _period_range(year, month)
     excluded_uuid = _excluded_collection_uuid()
     accessioned_id = _metadata_field_id("dc", "date", "accessioned")
@@ -373,13 +416,20 @@ def submitter_collections_for_submitter(year: int, month: int, submitter_uuid: s
 
     submitter_name = submitter_name_by_uuid(submitter_uuid) or submitter_uuid
 
-    return {
+    result = {
         "submitter": submitter_name,
         "collections": collections,
     }
+    _cache_set(cache_key, result)
+    return result
 
 
 def submitter_name_by_uuid(submitter_uuid: str) -> Optional[str]:
+    cache_key = f"submitters:name:{submitter_uuid}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     firstname_id = _metadata_field_id("eperson", "firstname", None)
     lastname_id = _metadata_field_id("eperson", "lastname", None)
 
@@ -415,5 +465,124 @@ def submitter_name_by_uuid(submitter_uuid: str) -> Optional[str]:
             )
             row = cur.fetchone()
             if row:
+                _cache_set(cache_key, row[0])
                 return row[0]
     return None
+
+
+def researcher_profiles_by_period(year: int, month: int, collection_uuid: str):
+    cache_key = f"orcid:profiles:{collection_uuid}:{year}:{month}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    start_dt, end_dt = _period_range(year, month)
+
+    title_id = _metadata_field_id("dc", "title", None)
+    if not title_id:
+        raise RuntimeError("Metadata field registry is missing required fields")
+
+    sql = (
+        "with profile_items as ("
+        "  select i.uuid as owner_id "
+        "  from item i "
+        "  where i.owning_collection::text = %s "
+        "    and i.in_archive = true and i.withdrawn = false and i.discoverable = true"
+        "), latest as ("
+        "  select distinct on (owner_id, entity_id) "
+        "         owner_id, entity_id, timestamp_last_attempt, status "
+        "  from orcid_history "
+        "  where owner_id in (select owner_id from profile_items) "
+        "    and timestamp_last_attempt >= %s and timestamp_last_attempt <= %s "
+        "  order by owner_id, entity_id, timestamp_last_attempt desc"
+        "), profile_titles as ("
+        "  select mv.dspace_object_id as item_uuid, "
+        "         max(mv.text_value) as title "
+        "  from metadatavalue mv "
+        "  where mv.metadata_field_id = %s "
+        "  group by mv.dspace_object_id"
+        ") "
+        "select l.owner_id::text as owner_id, "
+        "       coalesce(pt.title, l.owner_id::text) as profile_name, "
+        "       count(distinct l.entity_id) as publications "
+        "from latest l "
+        "join item i on i.uuid::text = l.owner_id::text "
+        "left join profile_titles pt on pt.item_uuid = i.uuid "
+        "where l.status in (200, 201) "
+        "group by l.owner_id, profile_name "
+        "order by publications desc, profile_name asc"
+    )
+
+    rows = []
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                sql,
+                (collection_uuid, start_dt, end_dt, title_id),
+            )
+            rows = cur.fetchall()
+
+    result = [
+        {"owner_id": row[0], "profile": row[1], "count": int(row[2])}
+        for row in rows
+    ]
+    _cache_set(cache_key, result)
+    return result
+
+
+def researcher_profile_publications(year: int, month: int, owner_id: str):
+    cache_key = f"orcid:publications:{owner_id}:{year}:{month}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    start_dt, end_dt = _period_range(year, month)
+
+    title_id = _metadata_field_id("dc", "title", None)
+    if not title_id:
+        raise RuntimeError("Metadata field registry is missing required fields")
+
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "select distinct on (owner_id, entity_id) entity_id::text, status, timestamp_last_attempt "
+                "from orcid_history "
+                "where owner_id::text = %s "
+                "  and timestamp_last_attempt >= %s and timestamp_last_attempt <= %s "
+                "order by owner_id, entity_id, timestamp_last_attempt desc",
+                (owner_id, start_dt, end_dt),
+            )
+            entity_rows = cur.fetchall()
+
+            entity_ids = [row[0] for row in entity_rows if row[1] in (200, 201)]
+            if not entity_ids:
+                _cache_set(cache_key, [])
+                return []
+
+            last_attempt_map = {
+                row[0]: row[2]
+                for row in entity_rows
+                if row[1] in (200, 201)
+            }
+
+            cur.execute(
+                "select mv.dspace_object_id::text, max(mv.text_value) "
+                "from metadatavalue mv "
+                "where mv.metadata_field_id = %s "
+                "  and mv.dspace_object_id = any(%s) "
+                "group by mv.dspace_object_id",
+                (title_id, entity_ids),
+            )
+            titles = {row[0]: row[1] for row in cur.fetchall()}
+
+    publications = []
+    for entity_id in entity_ids:
+        publications.append({
+            "uuid": entity_id,
+            "title": titles.get(entity_id, entity_id),
+            "date": last_attempt_map.get(entity_id),
+        })
+
+    publications.sort(key=lambda item: (item["date"] is None, item["date"], item["title"].lower()))
+    _cache_set(cache_key, publications)
+    return publications

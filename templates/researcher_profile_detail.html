@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block page_title %}Відправники — {% if month == 0 %}{{ month_name }}{% else %}{{ month_name }} {{ year }}{% endif %}{% endblock %}
+{% block page_title %}Профіль — {{ profile }}{% endblock %}
 {% block page_hint %}
-  <div class="text-secondary small">Показуємо кількість документів, надісланих кожним відправником за вибраний період. Натисніть на ім'я, щоб побачити колекції.</div>
+  <div class="text-secondary small">Список публікацій, які успішно синхронізовані з ORCID для цього профілю за вибраний період. Дата — остання успішна синхронізація.</div>
 {% endblock %}
 
 {% block content %}
@@ -38,13 +38,8 @@
     <button type="submit" class="btn btn-primary ms-auto">Показати</button>
 
     <a class="btn btn-outline-secondary"
-       href="{{ url_for('submitters_month', year=today_year, month=today_month) }}">
-      Поточний місяць
-    </a>
-
-    <a class="btn btn-outline-info"
-       href="{{ url_for('submitters_heatmap') }}">
-      <i class="bi bi-grid-3x3-gap"></i> Теплова карта
+       href="{{ url_for('researcher_profiles_period', year=selected_year, month=selected_month) }}">
+      <i class="bi bi-arrow-left"></i> Назад до профілів
     </a>
   </div>
 </form>
@@ -54,13 +49,10 @@
     e.preventDefault();
     const y = document.getElementById('yearSel').value;
     const m = document.getElementById('monthSel').value;
-
-    // Берём корректный base URL (с префиксом /dspace-dashboard, если он есть)
-    const base = {{ url_for('submitters_month', year=0, month=0)|tojson }};
+    const base = {{ url_for('researcher_profile_detail', owner_id=owner_id, year=0, month=0)|tojson }};
     window.location.href = base.replace('/0/0', `/${y}/${m}`);
   });
 </script>
-
 
 <div class="text-secondary small mb-2">
   Період: <span class="fw-semibold">{% if month == 0 %}{{ month_name }}{% else %}{{ month_name }} {{ year }}{% endif %}</span>
@@ -72,34 +64,36 @@
       <table class="table align-middle mb-0">
         <thead>
           <tr class="text-secondary small">
-            <th>Відправник</th>
-            <th class="text-end" style="width:160px">Документів</th>
+            <th>Публікація</th>
+            <th style="width:160px" class="text-end">Дата</th>
           </tr>
         </thead>
         <tbody>
           {% set ns = namespace(total=0) %}
-          {% for r in rows %}
-            {% set name = r.get('submitter') if r is mapping else '' %}
-            {% set uuid = r.get('uuid') if r is mapping else '' %}
-            {% set cnt = r.get('total', 0) if r is mapping else 0 %}
-            {% set ns.total = ns.total + cnt %}
-
+          {% for item in publications %}
+            {% set ns.total = ns.total + 1 %}
             <tr>
-              <td class="text-truncate" style="max-width: 520px">
-                {% if uuid %}
-                  <a href="{{ url_for('submitter_detail', submitter_id=uuid, year=selected_year, month=selected_month) }}">
-                    {{ name if name else "—" }}
+              <td class="text-truncate" style="max-width: 640px">
+                {% if ui_base_url %}
+                  <a href="{{ ui_base_url }}/entities/publication/{{ item.uuid }}" target="_blank" rel="noopener">
+                    {{ item.title }}
                   </a>
                 {% else %}
-                  {{ name if name else "—" }}
+                  {{ item.title }}
                 {% endif %}
               </td>
-              <td class="fw-semibold text-end">{{ cnt|fmt }}</td>
+              <td class="text-end text-secondary">
+                {% if item.date %}
+                  {{ item.date.strftime('%d.%m.%Y') }}
+                {% else %}
+                  —
+                {% endif %}
+              </td>
             </tr>
           {% else %}
             <tr><td colspan="2" class="text-secondary">Немає даних</td></tr>
           {% endfor %}
-          {% if rows|length > 0 %}
+          {% if publications|length > 0 %}
           <tr class="table-active border-top border-2">
             <td class="fw-bold">Усього</td>
             <td class="fw-bold text-end">{{ ns.total|fmt }}</td>

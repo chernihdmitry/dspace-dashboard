@@ -22,6 +22,7 @@ load_dotenv()  # загружает .env если есть
 MATOMO_BASE_URL = get_config_value("matomo.tracker.url", os.getenv("MATOMO_BASE_URL", "")).rstrip("/")
 MATOMO_SITE_ID = get_config_value("matomo.request.siteid", os.getenv("MATOMO_SITE_ID", ""))
 MATOMO_TOKEN_AUTH = get_config_value("matomo.async-client.token", os.getenv("MATOMO_TOKEN_AUTH", ""))
+MATOMO_ENABLED = get_config_value("matomo.enabled", os.getenv("MATOMO_ENABLED", "")).strip().lower()
 MATOMO_TIMEOUT = float(os.getenv("MATOMO_TIMEOUT", "10"))
 
 
@@ -298,4 +299,8 @@ def get_summary_data(date: str = "yesterday", exclude_technical: bool = False) -
 
 def is_configured() -> bool:
     """Проверка, настроен ли Matomo"""
+    if MATOMO_ENABLED in {"false", "0", "no", "off"}:
+        return False
+    if MATOMO_ENABLED in {"true", "1", "yes", "on"}:
+        return bool(MATOMO_BASE_URL and MATOMO_SITE_ID and MATOMO_TOKEN_AUTH)
     return bool(MATOMO_BASE_URL and MATOMO_SITE_ID and MATOMO_TOKEN_AUTH)
