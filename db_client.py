@@ -104,6 +104,10 @@ def _metadata_field_id(schema: str, element: str, qualifier: Optional[str]) -> O
     return None
 
 
+def _excluded_collection_uuid() -> str:
+    return get_config_value("researcher-profile.collection.uuid", "").strip()
+
+
 def _collection_titles_by_uuid(collection_uuids: List[str]) -> Dict[str, str]:
     if not collection_uuids:
         return {}
@@ -231,8 +235,9 @@ def edited_docs_by_editor_attempts(year: int, month: int, limit: int = 200):
     return attempts
 
 
-def _submitter_collections_query(include_submitter_filter: bool) -> str:
+def _submitter_collections_query(include_submitter_filter: bool, exclude_collection: bool) -> str:
     filter_clause = " and e.uuid::text = %s " if include_submitter_filter else " "
+    exclusion_clause = " and i.owning_collection::text <> %s " if exclude_collection else " "
     return (
         "with accessioned as ("
         "  select mv.dspace_object_id as item_uuid, "
@@ -266,7 +271,8 @@ def _submitter_collections_query(include_submitter_filter: bool) -> str:
         "left join eperson_names en on en.eperson_uuid = e.uuid "
         "where i.in_archive = true and i.withdrawn = false and i.discoverable = true "
         "  and a.accessioned_at >= %s and a.accessioned_at <= %s "
-        + filter_clause +
+        + exclusion_clause +
+        filter_clause +
         "group by submitter_uuid, submitter_name, collection_name "
         "order by submitter_name asc, count(distinct i.uuid) desc"
     )
@@ -274,7 +280,8 @@ def _submitter_collections_query(include_submitter_filter: bool) -> str:
 
 def submitter_totals_by_period(year: int, month: int):
     start_dt, end_dt = _period_range(year, month)
-    sql = _submitter_collections_query(False)
+    excluded_uuid = _excluded_collection_uuid()
+    sql = _submitter_collections_query(False, bool(excluded_uuid))
 
     accessioned_id = _metadata_field_id("dc", "date", "accessioned")
     title_id = _metadata_field_id("dc", "title", None)
@@ -287,19 +294,19 @@ def submitter_totals_by_period(year: int, month: int):
     rows = []
     with _connect() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                sql,
-                (
-                    accessioned_id,
-                    title_id,
-                    firstname_id,
-                    lastname_id,
-                    firstname_id,
-                    lastname_id,
-                    start_dt,
-                    end_dt,
-                ),
-            )
+            params: List[Any] = [
+                accessioned_id,
+                title_id,
+                firstname_id,
+                lastname_id,
+                firstname_id,
+                lastname_id,
+                start_dt,
+                end_dt,
+            ]
+            if excluded_uuid:
+                params.append(excluded_uuid)
+            cur.execute(sql, tuple(params))
             rows = cur.fetchall()
 
     grouped: Dict[str, Dict[str, Any]] = {}
@@ -320,6 +327,7 @@ def submitter_totals_by_period(year: int, month: int):
 
 def submitter_collections_for_submitter(year: int, month: int, submitter_uuid: str):
     start_dt, end_dt = _period_range(year, month)
+    excluded_uuid = _excluded_collection_uuid()
     accessioned_id = _metadata_field_id("dc", "date", "accessioned")
     if not accessioned_id:
         raise RuntimeError("Metadata field registry is missing required fields")
@@ -337,6 +345,7 @@ def submitter_collections_for_submitter(year: int, month: int, submitter_uuid: s
         "join accessioned a on a.item_uuid = i.uuid "
         "where i.in_archive = true and i.withdrawn = false and i.discoverable = true "
         "  and a.accessioned_at >= %s and a.accessioned_at <= %s "
+        + ("  and i.owning_collection::text <> %s " if excluded_uuid else "") +
         "  and i.submitter_id::text = %s "
         "group by i.owning_collection "
         "order by count(distinct i.uuid) desc"
@@ -345,7 +354,11 @@ def submitter_collections_for_submitter(year: int, month: int, submitter_uuid: s
     rows = []
     with _connect() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, (accessioned_id, start_dt, end_dt, submitter_uuid))
+            params: List[Any] = [accessioned_id, start_dt, end_dt]
+            if excluded_uuid:
+                params.append(excluded_uuid)
+            params.append(submitter_uuid)
+            cur.execute(sql, tuple(params))
             rows = cur.fetchall()
 
     collection_ids = [row[0] for row in rows]
