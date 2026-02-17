@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block page_title %}Відправники — {% if month == 0 %}{{ month_name }}{% else %}{{ month_name }} {{ year }}{% endif %}{% endblock %}
+{% block page_title %}Відправник — {{ submitter }}{% endblock %}
 
 {% block content %}
 {% if error %}
@@ -35,13 +35,8 @@
     <button type="submit" class="btn btn-primary ms-auto">Показати</button>
 
     <a class="btn btn-outline-secondary"
-       href="{{ url_for('submitters_month', year=today_year, month=today_month) }}">
-      Поточний місяць
-    </a>
-
-    <a class="btn btn-outline-info"
-       href="{{ url_for('submitters_heatmap') }}">
-      <i class="bi bi-grid-3x3-gap"></i> Теплова карта
+       href="{{ url_for('submitters_month', year=selected_year, month=selected_month) }}">
+      <i class="bi bi-arrow-left"></i> Назад до відправників
     </a>
   </div>
 </form>
@@ -51,13 +46,10 @@
     e.preventDefault();
     const y = document.getElementById('yearSel').value;
     const m = document.getElementById('monthSel').value;
-
-    // Берём корректный base URL (с префиксом /dspace-dashboard, если он есть)
-    const base = {{ url_for('submitters_month', year=0, month=0)|tojson }};
+    const base = {{ url_for('submitter_detail', submitter_id=submitter_id, year=0, month=0)|tojson }};
     window.location.href = base.replace('/0/0', `/${y}/${m}`);
   });
 </script>
-
 
 <div class="text-secondary small mb-2">
   Період: <span class="fw-semibold">{% if month == 0 %}{{ month_name }}{% else %}{{ month_name }} {{ year }}{% endif %}</span>
@@ -69,39 +61,19 @@
       <table class="table align-middle mb-0">
         <thead>
           <tr class="text-secondary small">
-            <th>Відправник</th>
+            <th>Колекція</th>
             <th class="text-end" style="width:160px">Документів</th>
           </tr>
         </thead>
         <tbody>
-          {% set ns = namespace(total=0) %}
-          {% for r in rows %}
-            {% set name = r.get('submitter') if r is mapping else '' %}
-            {% set uuid = r.get('uuid') if r is mapping else '' %}
-            {% set cnt = r.get('total', 0) if r is mapping else 0 %}
-            {% set ns.total = ns.total + cnt %}
-
-            <tr>
-              <td class="text-truncate" style="max-width: 520px">
-                {% if uuid %}
-                  <a href="{{ url_for('submitter_detail', submitter_id=uuid, year=selected_year, month=selected_month) }}">
-                    {{ name if name else "—" }}
-                  </a>
-                {% else %}
-                  {{ name if name else "—" }}
-                {% endif %}
-              </td>
-              <td class="fw-semibold text-end">{{ cnt|fmt }}</td>
-            </tr>
-          {% else %}
-            <tr><td colspan="2" class="text-secondary">Немає даних</td></tr>
-          {% endfor %}
-          {% if rows|length > 0 %}
-          <tr class="table-active border-top border-2">
-            <td class="fw-bold">Усього</td>
-            <td class="fw-bold text-end">{{ ns.total|fmt }}</td>
+          {% for row in collections %}
+          <tr>
+            <td class="text-truncate" style="max-width: 520px">{{ row.collection }}</td>
+            <td class="fw-semibold text-end">{{ row.count|fmt }}</td>
           </tr>
-          {% endif %}
+          {% else %}
+          <tr><td colspan="2" class="text-secondary">Немає даних</td></tr>
+          {% endfor %}
         </tbody>
       </table>
     </div>

@@ -17,6 +17,7 @@ load_dotenv()  # загружает .env если есть
 import solr_client as solr
 import matomo_client as matomo
 import auth_dspace
+import db_client as db
 from dspace_config import get_config_value
 
 APP_TITLE = os.getenv("APP_TITLE", "DSpace Live Dashboard")
@@ -425,13 +426,13 @@ def create_app():
         years = list(range(START_YEAR, today.year + 1))
         months = list(range(1, 13))
 
-        key = f"submitters_{year}_{month}_v3"
+        key = f"submitters_{year}_{month}_v4"
         rows = cache.get(key)
 
         error = None
         if rows is None:
             try:
-                rows = solr.submitters_for_month(year, month, limit=300)
+                rows = db.submitter_totals_by_period(year, month)
                 cache.set(key, rows, timeout=CACHE_TTL_SECONDS)
             except Exception as e:
                 app.logger.exception("Submitters failed")
@@ -462,13 +463,13 @@ def create_app():
         years = list(range(START_YEAR, today.year + 1))
         months = list(range(1, 13))
 
-        key = f"submitters_{year}_all_v1"
+        key = f"submitters_{year}_all_v2"
         rows = cache.get(key)
 
         error = None
         if rows is None:
             try:
-                rows = solr.submitters_for_year(year, limit=300)
+                rows = db.submitter_totals_by_period(year, 0)
                 cache.set(key, rows, timeout=CACHE_TTL_SECONDS)
             except Exception as e:
                 app.logger.exception("Submitters for year failed")
@@ -529,6 +530,42 @@ def create_app():
             year=year,
             years=years,
             selected_year=year,
+        )
+
+    @app.get("/submitters/user/<string:submitter_id>/<int:year>/<int:month>")
+    @login_required
+    def submitter_detail(submitter_id: str, year: int, month: int):
+        if month < 0 or month > 12:
+            return redirect(url_for("submitters"))
+
+        today = date.today()
+        years = list(range(START_YEAR, today.year + 1))
+        months = list(range(1, 13))
+
+        error = None
+        detail = {"submitter": submitter_id, "collections": []}
+        try:
+            detail = db.submitter_collections_for_submitter(year, month, submitter_id)
+        except Exception as exc:
+            app.logger.exception("Submitter detail failed")
+            error = str(exc)
+
+        month_name = MONTH_NAMES_UA.get(month, str(month)) if month else f"Усі місяці {year} року"
+
+        return render_template(
+            "submitter_detail.html",
+            submitter=detail.get("submitter", submitter_id),
+            submitter_id=submitter_id,
+            collections=detail.get("collections", []),
+            error=error,
+            year=year,
+            month=month,
+            month_name=month_name,
+            years=years,
+            months=months,
+            selected_year=year,
+            selected_month=month,
+            month_names=MONTH_NAMES_UA,
         )
 
     @app.get("/health")

@@ -620,3 +620,70 @@ def submitters_heatmap_data(year: int, limit: int = 50):
         "data": data_matrix,
     }
 
+
+# -----------------------------
+# Edited documents (experiments)
+# -----------------------------
+
+def _edited_docs_count(
+    start_dt: datetime,
+    end_dt: datetime,
+    last_modified_field: str,
+    accession_field: str,
+):
+    """
+    Count items where last_modified_field is within range and after accession_field.
+    Uses a function range query: ms(last_modified) - ms(accession) > 0.
+    """
+    fq = [
+        "-entityType:Person",
+        "discoverable:true",
+        "withdrawn:false",
+        f"{last_modified_field}:[{iso_z(start_dt)} TO {iso_z(end_dt)}]",
+        f"{{!frange l=1}}sub(ms({last_modified_field}),ms({accession_field}))",
+    ]
+
+    params = {
+        "q": "archived:true",
+        "fq": fq,
+        "rows": 0,
+    }
+
+    return int(_get(SOLR_SEARCH_URL, params)["response"]["numFound"])
+
+
+def edited_docs_attempts(year: int, month: int):
+    """
+    Try the preferred Solr field combination for edited docs.
+    Returns a single attempt with count or error.
+    """
+    if month == 0:
+        start = datetime(year, 1, 1, 0, 0, 0)
+        today = date.today()
+        if year == today.year:
+            end = datetime.combine(today, datetime.max.time())
+        else:
+            end = datetime(year, 12, 31, 23, 59, 59)
+    else:
+        start, end = month_range(year, month)
+
+    attempts = []
+    last_modified = "lastModified"
+    accession = "dc.date.accessioned_dt"
+    label = f"{last_modified} > {accession}"
+    try:
+        count = _edited_docs_count(start, end, last_modified, accession)
+        attempts.append({
+            "label": label,
+            "count": count,
+            "error": None,
+        })
+    except Exception as exc:
+        attempts.append({
+            "label": label,
+            "count": None,
+            "error": str(exc),
+        })
+
+    return attempts
+
