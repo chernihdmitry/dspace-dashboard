@@ -16,20 +16,17 @@ Dashboard защищён авторизацией через DSpace REST API. Д
 
 - Учётная запись в DSpace
 - Членство в группе Administrator
-- Корректные переменные окружения (см. ниже)
+- Доступ к `local.cfg` (см. ниже) и корректные переменные окружения
 
 ## Настройка переменных окружения
 
 В файле `/etc/default/dspace-dashboard` должны быть указаны:
 
 ```bash
-# Базовый URL вашей установки DSpace
-REST_BASE_URL="https://repository.kpi.kharkov.ua"
+# Путь к DSpace local.cfg
+DSPACE_CONFIG_PATH="/dspace/config/local.cfg"
 
-# Путь к REST API (обычно /server/api)
-DSPACE_API_ROOT="/server/api"
-
-# Секретный ключ для Flask сессий (генерируется автоматически)
+# Секретный ключ для Flask сессий
 SECRET_KEY="ваш_случайный_ключ_64_символа"
 
 # (Опционально) Список email администраторов через запятую
@@ -37,13 +34,22 @@ SECRET_KEY="ваш_случайный_ключ_64_символа"
 ADMIN_EMAILS="admin@example.com,manager@example.com"
 ```
 
+## Что нужно в local.cfg
+
+Для авторизации используется ключ `dspace.server.url`, на его основе формируется REST API:
+
+```properties
+# Базовый URL вашей установки DSpace
+dspace.server.url = https://repository.example.edu
+```
+
 ## Как работает авторизация
 
 1. **Вход**: Пользователь вводит email и пароль
-2. **CSRF токен**: Запрашиваем `/server/api/authn/status` для получения CSRF токена
-3. **Проверка в DSpace**: Отправляется POST запрос на `/server/api/authn/login` с CSRF токеном
+2. **CSRF токен**: Запрашиваем `/api/authn/status` для получения CSRF токена
+3. **Проверка в DSpace**: Отправляется POST запрос на `/api/authn/login` с CSRF токеном
 4. **Получение токена**: При успешной авторизации получаем JWT токен
-5. **Проверка статуса**: Запрашиваем `/server/api/authn/status` для получения данных пользователя
+5. **Проверка статуса**: Запрашиваем `/api/authn/status` для получения данных пользователя
 6. **Проверка прав**: Проверяем принадлежность к группе Administrator
 7. **Создание сессии**: При успехе создаём сессию Flask-Login
 
@@ -56,7 +62,7 @@ ADMIN_EMAILS="admin@example.com,manager@example.com"
 - Все данные передаются через HTTPS
 - Токены хранятся только в серверной сессии
 - Сессия автоматически истекает при закрытии браузера (можно настроить)
-- При выходе токен аннулируется в DSpace через `/server/api/authn/logout`
+- При выходе токен аннулируется в DSpace через `/api/authn/logout`
 
 ## Отладка проблем авторизации
 
@@ -75,7 +81,7 @@ ADMIN_EMAILS="admin@example.com,manager@example.com"
 ### Проблема: "Помилка авторизації"
 
 - Проверьте доступность DSpace REST API
-- Убедитесь, что `REST_BASE_URL` и `DSPACE_API_ROOT` указаны правильно
+- Убедитесь, что `dspace.server.url` задан в `local.cfg` и `DSPACE_CONFIG_PATH` указывает на него
 - Проверьте сетевое подключение между dashboard и DSpace
 
 ### Проверка конфигурации
@@ -83,6 +89,9 @@ ADMIN_EMAILS="admin@example.com,manager@example.com"
 ```bash
 # Проверить переменные окружения
 cat /etc/default/dspace-dashboard
+
+# Проверить доступность local.cfg
+cat $DSPACE_CONFIG_PATH
 
 # Проверить статус службы
 sudo systemctl status dspace-dashboard
