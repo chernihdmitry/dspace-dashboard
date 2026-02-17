@@ -31,21 +31,21 @@
         <li class="nav-item">
         <a class="nav-link {% if request.endpoint == 'info' %}active{% endif %}"
             href="{{ url_for('info') }}">
-            Загальний звіт
+          <i class="bi bi-speedometer2"></i> Загальний звіт
         </a>
         </li>
 
         <li class="nav-item">
         <a class="nav-link {% if request.endpoint in ['statistics', 'statistics_period', 'statistics_dynamics', 'month_details'] %}active{% endif %}"
             href="{{ url_for('statistics') }}">
-            Завантаження
+          <i class="bi bi-cloud-download"></i> Завантаження
         </a>
         </li>
 
         <li class="nav-item">
         <a class="nav-link {% if request.endpoint in ['submitters_month', 'submitters_heatmap'] %}active{% endif %}"
             href="{{ url_for('submitters') }}">
-            Відправники
+          <i class="bi bi-people"></i> Відправники
         </a>
         </li>
 
@@ -53,7 +53,7 @@
         <li class="nav-item">
         <a class="nav-link {% if request.endpoint == 'matomo_page' %}active{% endif %}"
             href="{{ url_for('matomo_page') }}">
-            Matomo
+          <i class="bi bi-graph-up"></i> Matomo
         </a>
         </li>
         {% endif %}
@@ -62,7 +62,7 @@
         <li class="nav-item">
         <a class="nav-link {% if request.endpoint in ['researcher_profiles', 'researcher_profiles_period'] %}active{% endif %}"
           href="{{ url_for('researcher_profiles') }}">
-          Профілі дослідників
+          <i class="bi bi-person-vcard"></i> Профілі дослідників
         </a>
         </li>
         {% endif %}
