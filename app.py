@@ -31,9 +31,9 @@ START_MONTH = int(os.getenv("START_MONTH", "1"))
 CACHE_TTL_SECONDS = int(os.getenv("CACHE_TTL_SECONDS", "300"))
 
 MONTH_NAMES_UA = {
-    1: "Січень", 2: "Лютий", 3: "Березень", 4: "Квітень",
-    5: "Травень", 6: "Червень", 7: "Липень", 8: "Серпень",
-    9: "Вересень", 10: "Жовтень", 11: "Листопад", 12: "Грудень",
+    1: "січень", 2: "лютий", 3: "березень", 4: "квітень",
+    5: "травень", 6: "червень", 7: "липень", 8: "серпень",
+    9: "вересень", 10: "жовтень", 11: "листопад", 12: "грудень",
 }
 
 def read_version() -> str:
@@ -611,6 +611,47 @@ def create_app():
             month_names=MONTH_NAMES_UA,
         )
 
+    @app.get("/submitters/user/<string:submitter_id>/<int:year>/<int:month>/collection/<string:collection_id>")
+    @login_required
+    def submitter_collection_detail(submitter_id: str, year: int, month: int, collection_id: str):
+        if month < 0 or month > 12:
+            return redirect(url_for("submitters"))
+
+        today = date.today()
+        years = list(range(START_YEAR, today.year + 1))
+        months = list(range(1, 13))
+
+        error = None
+        detail = {"collection": collection_id, "items": []}
+        submitter_name = submitter_id
+        try:
+            submitter_name = db.submitter_name_by_uuid(submitter_id) or submitter_id
+            detail = db.submitter_collection_items(year, month, submitter_id, collection_id)
+        except Exception as exc:
+            app.logger.exception("Submitter collection detail failed")
+            error = str(exc)
+
+        month_name = MONTH_NAMES_UA.get(month, str(month)) if month else f"Усі місяці {year} року"
+
+        return render_template(
+            "submitter_collection_detail.html",
+            submitter=submitter_name,
+            submitter_id=submitter_id,
+            collection_id=collection_id,
+            collection=detail.get("collection", collection_id),
+            items=detail.get("items", []),
+            ui_base_url=get_config_value("dspace.ui.url", "").rstrip("/"),
+            error=error,
+            year=year,
+            month=month,
+            month_name=month_name,
+            years=years,
+            months=months,
+            selected_year=year,
+            selected_month=month,
+            month_names=MONTH_NAMES_UA,
+        )
+
     @app.get("/researcher-profiles")
     @login_required
     def researcher_profiles():
@@ -691,6 +732,10 @@ def create_app():
                     profile_name = row.get("profile") or owner_id
                     break
             publications = db.researcher_profile_publications(year, month, owner_id)
+            if profile_name == owner_id:
+                resolved_name = db.researcher_profile_name(owner_id, collection_uuid)
+                if resolved_name:
+                    profile_name = resolved_name
         except Exception as exc:
             app.logger.exception("Researcher profile detail failed")
             error = str(exc)

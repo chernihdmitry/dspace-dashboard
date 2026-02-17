@@ -9,13 +9,13 @@
     <div class="card card-soft h-100">
       <div class="card-body">
         <div class="d-flex align-items-center justify-content-between">
-          <div class="text-secondary small">📚 Кількість документів у репозитарії</div>
+          <div class="text-secondary small"><i class="bi bi-file-earmark-text"></i> Кількість документів у репозитарії</div>
           <span class="badge text-bg-light">live</span>
         </div>
 
         <div class="display-5 fw-bold mt-1">{{ data.total_docs|fmt }}</div>
 
-        <div class="text-secondary small">👤 Профілі дослідників (entity.type=Person)</div>
+        <div class="text-secondary small"><i class="bi bi-person-vcard"></i> Профілі дослідників (entity.type=Person)</div>
         <div class="h2 fw-semibold mb-0">{{ data.person_profiles|fmt }}</div>
 
         <div class="d-flex gap-3 flex-wrap mt-2 small text-secondary">

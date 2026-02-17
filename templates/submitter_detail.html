@@ -52,7 +52,7 @@
 </script>
 
 <div class="text-secondary small mb-2">
-  Період: <span class="fw-semibold">{% if month == 0 %}{{ month_name }}{% else %}{{ month_name }} {{ year }}{% endif %}</span>
+  Колекції, до яких користувач {{ submitter }} відправляв документи у {{ year }} році.
 </div>
 
 <div class="card card-soft">
@@ -61,7 +61,7 @@
       <table class="table align-middle mb-0">
         <thead>
           <tr class="text-secondary small">
-            <th>Колекція</th>
+            <th><i class="bi bi-collection"></i> Колекція</th>
             <th class="text-end" style="width:160px">Документів</th>
           </tr>
         </thead>
@@ -70,7 +70,11 @@
           {% for row in collections %}
           {% set ns.total = ns.total + row.count %}
           <tr>
-            <td class="text-truncate" style="max-width: 520px">{{ row.collection }}</td>
+            <td class="text-truncate" style="max-width: 520px">
+              <a href="{{ url_for('submitter_collection_detail', submitter_id=submitter_id, year=selected_year, month=selected_month, collection_id=row.collection_id) }}">
+                <i class="bi bi-collection"></i> {{ row.collection }}
+              </a>
+            </td>
             <td class="fw-semibold text-end">{{ row.count|fmt }}</td>
           </tr>
           {% else %}

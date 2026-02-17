@@ -44,7 +44,7 @@
       <table class="table table-sm table-bordered text-center align-middle mb-0" id="heatmapTable">
         <thead>
           <tr class="text-secondary small">
-            <th style="min-width: 200px;" class="text-start sticky-column">Відправник</th>
+            <th style="min-width: 200px;" class="text-start sticky-column"><i class="bi bi-person"></i> Відправник</th>
             {% for month in heatmap_data.months %}
               <th style="min-width: 70px; writing-mode: vertical-lr; transform: rotate(180deg);">
                 {{ month }}
@@ -57,7 +57,7 @@
           {% for i in range(heatmap_data.submitters|length) %}
           <tr>
             <td class="text-start text-truncate sticky-column bg-white" style="max-width: 250px;">
-              <strong>{{ heatmap_data.submitters[i] }}</strong>
+              <strong><i class="bi bi-person"></i> {{ heatmap_data.submitters[i] }}</strong>
             </td>
             {% set ns = namespace(row_total=0) %}
             {% for j in range(heatmap_data.months|length) %}

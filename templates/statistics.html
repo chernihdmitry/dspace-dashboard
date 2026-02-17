@@ -57,11 +57,11 @@
   });
 </script>
 
-<div class="text-secondary small mb-2">
-  Період: <span class="fw-semibold">{% if month == 0 %}{{ month_name }}{% else %}{{ month_name }} {{ year }}{% endif %}</span>
-</div>
 {% block page_hint %}
-  <div class="text-secondary small mb-2">Показуємо перегляди сторінок документів та завантаження файлів за вибраний період.</div>
+  <div class="text-secondary small mb-2">
+    Перегляди сторінок документів та завантаження файлів
+    {% if month == 0 %}у {{ year }} році{% else %}за {{ month_name }} {{ year }} року{% endif %}.
+  </div>
 {% endblock %}
 
 <div class="card card-soft">

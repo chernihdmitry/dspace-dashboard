@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block page_title %}Відправники — {% if month == 0 %}{{ month_name }}{% else %}{{ month_name }} {{ year }}{% endif %}{% endblock %}
+{% block page_title %}Відправник — {{ submitter }}{% endblock %}
 
 {% block content %}
 {% if error %}
@@ -35,13 +35,8 @@
     <button type="submit" class="btn btn-primary ms-auto">Показати</button>
 
     <a class="btn btn-outline-secondary"
-       href="{{ url_for('submitters_month', year=today_year, month=today_month) }}">
-      Поточний місяць
-    </a>
-
-    <a class="btn btn-outline-info"
-       href="{{ url_for('submitters_heatmap') }}">
-      <i class="bi bi-grid-3x3-gap"></i> Теплова карта
+       href="{{ url_for('submitter_detail', submitter_id=submitter_id, year=selected_year, month=selected_month) }}">
+      <i class="bi bi-arrow-left"></i> Назад до колекцій
     </a>
   </div>
 </form>
@@ -51,21 +46,15 @@
     e.preventDefault();
     const y = document.getElementById('yearSel').value;
     const m = document.getElementById('monthSel').value;
-
-    // Берём корректный base URL (с префиксом /dspace-dashboard, если он есть)
-    const base = {{ url_for('submitters_month', year=0, month=0)|tojson }};
+    const base = {{ url_for('submitter_collection_detail', submitter_id=submitter_id, year=0, month=0, collection_id=collection_id)|tojson }};
     window.location.href = base.replace('/0/0', `/${y}/${m}`);
   });
 </script>
 
-
-{% block page_hint %}
-  <div class="text-secondary small mb-2">
-    Кількість документів, надісланих кожним відправником
-    {% if month == 0 %}у {{ year }} році{% else %}за {{ month_name }} {{ year }} року{% endif %}.
-    Натисніть на ім'я, щоб побачити колекції.
-  </div>
-{% endblock %}
+<div class="text-secondary small mb-2">
+  Документи, які користувач {{ submitter }} відправляв у колекцію «{{ collection }}»
+  {% if month == 0 %}у {{ year }} році{% else %}за {{ month_name }} {{ year }} року{% endif %}.
+</div>
 
 <div class="card card-soft">
   <div class="card-body">
@@ -73,37 +62,30 @@
       <table class="table align-middle mb-0">
         <thead>
           <tr class="text-secondary small">
-            <th><i class="bi bi-person"></i> Відправник</th>
-            <th class="text-end" style="width:160px">Документів</th>
+            <th><i class="bi bi-file-earmark-text"></i> Документ</th>
           </tr>
         </thead>
         <tbody>
           {% set ns = namespace(total=0) %}
-          {% for r in rows %}
-            {% set name = r.get('submitter') if r is mapping else '' %}
-            {% set uuid = r.get('uuid') if r is mapping else '' %}
-            {% set cnt = r.get('total', 0) if r is mapping else 0 %}
-            {% set ns.total = ns.total + cnt %}
-
+          {% for item in items %}
+            {% set ns.total = ns.total + 1 %}
             <tr>
-              <td class="text-truncate" style="max-width: 520px">
-                {% if uuid %}
-                  <a href="{{ url_for('submitter_detail', submitter_id=uuid, year=selected_year, month=selected_month) }}">
-                    <i class="bi bi-person"></i> {{ name if name else "—" }}
+              <td class="text-truncate" style="max-width: 640px">
+                {% if ui_base_url %}
+                  <a href="{{ ui_base_url }}/items/{{ item.uuid }}" target="_blank" rel="noopener">
+                    <i class="bi bi-file-earmark-text"></i> {{ item.title }}
                   </a>
                 {% else %}
-                  <i class="bi bi-person"></i> {{ name if name else "—" }}
+                  <i class="bi bi-file-earmark-text"></i> {{ item.title }}
                 {% endif %}
               </td>
-              <td class="fw-semibold text-end">{{ cnt|fmt }}</td>
             </tr>
           {% else %}
-            <tr><td colspan="2" class="text-secondary">Немає даних</td></tr>
+            <tr><td class="text-secondary">Немає даних</td></tr>
           {% endfor %}
-          {% if rows|length > 0 %}
+          {% if items|length > 0 %}
           <tr class="table-active border-top border-2">
-            <td class="fw-bold">Усього</td>
-            <td class="fw-bold text-end">{{ ns.total|fmt }}</td>
+            <td class="fw-bold">Усього: {{ ns.total|fmt }}</td>
           </tr>
           {% endif %}
         </tbody>

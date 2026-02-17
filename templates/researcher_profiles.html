@@ -46,11 +46,11 @@
   });
 </script>
 
-<div class="text-secondary small mb-2">
-  Період: <span class="fw-semibold">{% if month == 0 %}{{ month_name }}{% else %}{{ month_name }} {{ year }}{% endif %}</span>
-</div>
 {% block page_hint %}
-  <div class="text-secondary small mb-2">Показуємо кількість публікацій, синхронізованих з ORCID для кожного профілю за вибраний період.</div>
+  <div class="text-secondary small mb-2">
+    Кількість публікацій, синхронізованих з ORCID для кожного профілю
+    {% if month == 0 %}у {{ year }} році{% else %}за {{ month_name }} {{ year }} року{% endif %}.
+  </div>
 {% endblock %}
 
 <div class="card card-soft">
@@ -59,7 +59,7 @@
       <table class="table align-middle mb-0">
         <thead>
           <tr class="text-secondary small">
-            <th>Профіль</th>
+            <th><i class="bi bi-person-vcard"></i> Профіль</th>
             <th class="text-end" style="width:160px">Публікацій</th>
           </tr>
         </thead>
@@ -70,7 +70,7 @@
             <tr>
               <td class="text-truncate" style="max-width: 520px">
                 <a href="{{ url_for('researcher_profile_detail', owner_id=row.owner_id, year=selected_year, month=selected_month) }}">
-                  {{ row.profile }}
+                  <i class="bi bi-person-vcard"></i> {{ row.profile }}
                 </a>
               </td>
               <td class="fw-semibold text-end">{{ row.count|fmt }}</td>

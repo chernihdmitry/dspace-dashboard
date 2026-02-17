@@ -307,6 +307,7 @@ def submitter_collections_for_submitter(year: int, month: int, submitter_uuid: s
     collections = []
     for collection_id, count in rows:
         collections.append({
+            "collection_id": collection_id,
             "collection": titles.get(collection_id, collection_id),
             "count": int(count),
         })
@@ -367,6 +368,71 @@ def submitter_name_by_uuid(submitter_uuid: str) -> Optional[str]:
     return None
 
 
+def submitter_collection_items(year: int, month: int, submitter_uuid: str, collection_uuid: str):
+    cache_key = f"submitters:items:{submitter_uuid}:{collection_uuid}:{year}:{month}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    start_dt, end_dt = _period_range(year, month)
+    accessioned_id = _metadata_field_id("dc", "date", "accessioned")
+    title_id = _metadata_field_id("dc", "title", None)
+    if not accessioned_id or not title_id:
+        raise RuntimeError("Metadata field registry is missing required fields")
+
+    sql = (
+        "with accessioned as ("
+        "  select mv.dspace_object_id as item_uuid, "
+        "         mv.text_value::timestamptz as accessioned_at "
+        "  from metadatavalue mv "
+        "  where mv.metadata_field_id = %s "
+        "    and mv.text_value ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'"
+        ") "
+        "select i.uuid::text "
+        "from item i "
+        "join accessioned a on a.item_uuid = i.uuid "
+        "where i.in_archive = true and i.withdrawn = false and i.discoverable = true "
+        "  and a.accessioned_at >= %s and a.accessioned_at <= %s "
+        "  and i.submitter_id::text = %s "
+        "  and i.owning_collection::text = %s "
+        "order by i.last_modified desc"
+    )
+
+    collection_name = _collection_titles_by_uuid([collection_uuid]).get(collection_uuid, collection_uuid)
+
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                sql,
+                (accessioned_id, start_dt, end_dt, submitter_uuid, collection_uuid),
+            )
+            item_ids = [row[0] for row in cur.fetchall()]
+
+            if not item_ids:
+                result = {"collection": collection_name, "items": []}
+                _cache_set(cache_key, result)
+                return result
+
+            cur.execute(
+                "select mv.dspace_object_id::text, max(mv.text_value) "
+                "from metadatavalue mv "
+                "where mv.metadata_field_id = %s "
+                "  and mv.dspace_object_id = any(%s) "
+                "group by mv.dspace_object_id",
+                (title_id, item_ids),
+            )
+            titles = {row[0]: row[1] for row in cur.fetchall()}
+
+    items = [
+        {"uuid": item_id, "title": titles.get(item_id, item_id)}
+        for item_id in item_ids
+    ]
+
+    result = {"collection": collection_name, "items": items}
+    _cache_set(cache_key, result)
+    return result
+
+
 def researcher_profiles_by_period(year: int, month: int, collection_uuid: str):
     cache_key = f"orcid:profiles:{collection_uuid}:{year}:{month}"
     cached = _cache_get(cache_key)
@@ -425,6 +491,37 @@ def researcher_profiles_by_period(year: int, month: int, collection_uuid: str):
     ]
     _cache_set(cache_key, result)
     return result
+
+
+def researcher_profile_name(owner_id: str, collection_uuid: str):
+    cache_key = f"orcid:profile-name:{collection_uuid}:{owner_id}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    title_id = _metadata_field_id("dc", "title", None)
+    if not title_id:
+        raise RuntimeError("Metadata field registry is missing required fields")
+
+    name = None
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "select max(mv.text_value) "
+                "from item i "
+                "left join metadatavalue mv on mv.dspace_object_id = i.uuid "
+                "  and mv.metadata_field_id = %s "
+                "where i.uuid::text = %s "
+                "  and i.owning_collection::text = %s "
+                "  and i.in_archive = true and i.withdrawn = false and i.discoverable = true",
+                (title_id, owner_id, collection_uuid),
+            )
+            row = cur.fetchone()
+            if row:
+                name = row[0]
+
+    _cache_set(cache_key, name)
+    return name
 
 
 def researcher_profile_publications(year: int, month: int, owner_id: str):

@@ -51,11 +51,12 @@
   });
 </script>
 
-<div class="text-secondary small mb-2">
-  Період: <span class="fw-semibold">{% if month == 0 %}{{ month_name }}{% else %}{{ month_name }} {{ year }}{% endif %}</span>
-</div>
 {% block page_hint %}
-  <div class="text-secondary small mb-2">Список публікацій, які успішно синхронізовані з ORCID для цього профілю за вибраний період. Дата — остання успішна синхронізація.</div>
+  <div class="text-secondary small mb-2">
+    Список публікацій, які успішно синхронізовані з ORCID для профілю {{ profile }}
+    {% if month == 0 %}у {{ year }} році{% else %}за {{ month_name }} {{ year }} року{% endif %}.
+    Дата — остання успішна синхронізація.
+  </div>
 {% endblock %}
 
 <div class="card card-soft">
@@ -64,7 +65,7 @@
       <table class="table align-middle mb-0">
         <thead>
           <tr class="text-secondary small">
-            <th>Публікація</th>
+            <th><i class="bi bi-file-earmark-text"></i> Публікація</th>
             <th style="width:160px" class="text-end">Дата</th>
           </tr>
         </thead>
@@ -76,10 +77,10 @@
               <td class="text-truncate" style="max-width: 640px">
                 {% if ui_base_url %}
                   <a href="{{ ui_base_url }}/entities/publication/{{ item.uuid }}" target="_blank" rel="noopener">
-                    {{ item.title }}
+                    <i class="bi bi-file-earmark-text"></i> {{ item.title }}
                   </a>
                 {% else %}
-                  {{ item.title }}
+                  <i class="bi bi-file-earmark-text"></i> {{ item.title }}
                 {% endif %}
               </td>
               <td class="text-end text-secondary">
