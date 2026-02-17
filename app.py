@@ -17,9 +17,10 @@ load_dotenv()  # загружает .env если есть
 import solr_client as solr
 import matomo_client as matomo
 import auth_dspace
+from dspace_config import get_config_value
 
 APP_TITLE = os.getenv("APP_TITLE", "DSpace Live Dashboard")
-REPO_NAME = os.getenv("REPO_NAME", "iRDPU")
+REPO_NAME = get_config_value("dspace.name", os.getenv("REPO_NAME", "DSpace"))
 
 START_YEAR = int(os.getenv("START_YEAR", "2025"))
 START_MONTH = int(os.getenv("START_MONTH", "1"))
@@ -96,7 +97,10 @@ def create_app():
     def inject_globals():
         return {
             "APP_TITLE": APP_TITLE,
-            "REPO_NAME": REPO_NAME,
+            "REPO_NAME": get_config_value(
+                "dspace.name",
+                os.getenv("REPO_NAME", "DSpace"),
+            ),
             "APP_VERSION": APP_VERSION,
             "today_str": date.today().strftime("%d.%m.%Y"),
             "matomo_configured": matomo.is_configured(),
@@ -120,7 +124,11 @@ def create_app():
                 return render_template("login.html")
             
             # Авторизация через DSpace API
-            token = auth_dspace.authenticate(email, password)
+            try:
+                token = auth_dspace.authenticate(email, password)
+            except RuntimeError as exc:
+                flash(str(exc), "danger")
+                return render_template("login.html")
             
             if not token:
                 flash("Невірний email або пароль", "danger")
@@ -538,13 +546,13 @@ def create_app():
         if not matomo.is_configured():
             return render_template(
                 "matomo.html",
-                error="Matomo не настроен. Проверьте переменные окружения: MATOMO_BASE_URL, MATOMO_SITE_ID, MATOMO_TOKEN_AUTH",
+                error="Matomo не настроен. Проверьте local.cfg: matomo.tracker.url, matomo.request.siteid, matomo.async-client.token",
                 configured=False
             )
         
         # Передаем URL и Site ID для ссылки на Matomo
-        matomo_url = os.getenv("MATOMO_BASE_URL", "").rstrip("/")
-        matomo_site_id = os.getenv("MATOMO_SITE_ID", "")
+        matomo_url = matomo.MATOMO_BASE_URL
+        matomo_site_id = matomo.MATOMO_SITE_ID
         
         return render_template(
             "matomo.html", 

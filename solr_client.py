@@ -3,24 +3,37 @@ import json
 import requests
 from datetime import datetime, date, timedelta
 from dateutil.relativedelta import relativedelta
+from dspace_config import get_config_value
 
 
 # -----------------------------
 # Config
 # -----------------------------
 
-SOLR_URL = os.getenv("SOLR_URL", "http://localhost:8983/solr").rstrip("/")
+SOLR_URL = get_config_value(
+    "solr.server",
+    os.getenv("SOLR_URL", "http://localhost:8983/solr"),
+).rstrip("/")
 SOLR_TIMEOUT = float(os.getenv("SOLR_TIMEOUT", "8"))
 
 SOLR_SEARCH_URL = f"{SOLR_URL}/search/select"
 SOLR_STATS_URL  = f"{SOLR_URL}/statistics/select"
 
-# ВАЖНО:
-# requests НЕ умеет ходить по относительным URL типа "/server/api".
-# Поэтому либо задай DSPACE_API_ROOT полностью, либо задай REST_BASE_URL (scheme+host),
-# и тогда /server/api станет абсолютным.
-REST_BASE_URL = os.getenv("REST_BASE_URL", "").rstrip("/")  # например https://dspace9-test.dspace.com.ua
-DSPACE_API_ROOT = os.getenv("DSPACE_API_ROOT", "/server/api")  # путь или полный URL
+def _build_api_base(server_url: str) -> str:
+    if not server_url:
+        return ""
+    base = server_url.rstrip("/")
+    if base.endswith("/api"):
+        return base
+    return f"{base}/api"
+
+
+def _get_api_base() -> str:
+    server_url = get_config_value(
+        "dspace.server.url",
+        os.getenv("REST_BASE_URL", ""),
+    ).rstrip("/")
+    return _build_api_base(server_url).rstrip("/")
 
 
 # -----------------------------
@@ -50,19 +63,15 @@ def month_range(year: int, month: int):
 def dspace_root_info():
     """
     Возвращает JSON с /server/api (root).
-    Требует абсолютный URL. Варианты:
-    - DSPACE_API_ROOT="https://host/server/api"
-    - REST_BASE_URL="https://host" и DSPACE_API_ROOT="/server/api"
+    Требует dspace.server.url в local.cfg (например https://host/server).
     """
-    if DSPACE_API_ROOT.startswith("http://") or DSPACE_API_ROOT.startswith("https://"):
-        url = DSPACE_API_ROOT
-    else:
-        if not REST_BASE_URL:
-            raise RuntimeError(
-                "DSPACE_API_ROOT is relative, but REST_BASE_URL is not set. "
-                "Set REST_BASE_URL=https://your-host or set DSPACE_API_ROOT as full URL."
-            )
-        url = f"{REST_BASE_URL}{DSPACE_API_ROOT}"
+    api_base = _get_api_base()
+    if not api_base:
+        raise RuntimeError(
+            "dspace.server.url is not set in local.cfg and REST_BASE_URL is empty."
+        )
+
+    url = api_base
 
     r = requests.get(url, timeout=6)
     r.raise_for_status()

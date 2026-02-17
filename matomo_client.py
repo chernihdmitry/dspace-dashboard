@@ -7,6 +7,7 @@ import requests
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 from dotenv import load_dotenv
+from dspace_config import get_config_value
 
 # Загрузка переменных окружения из файлов
 if os.path.exists("/etc/default/dspace-dashboard"):
@@ -18,9 +19,9 @@ load_dotenv()  # загружает .env если есть
 # Config
 # -----------------------------
 
-MATOMO_BASE_URL = os.getenv("MATOMO_BASE_URL", "").rstrip("/")
-MATOMO_SITE_ID = os.getenv("MATOMO_SITE_ID", "")
-MATOMO_TOKEN_AUTH = os.getenv("MATOMO_TOKEN_AUTH", "")
+MATOMO_BASE_URL = get_config_value("matomo.tracker.url", os.getenv("MATOMO_BASE_URL", "")).rstrip("/")
+MATOMO_SITE_ID = get_config_value("matomo.request.siteid", os.getenv("MATOMO_SITE_ID", ""))
+MATOMO_TOKEN_AUTH = get_config_value("matomo.async-client.token", os.getenv("MATOMO_TOKEN_AUTH", ""))
 MATOMO_TIMEOUT = float(os.getenv("MATOMO_TIMEOUT", "10"))
 
 

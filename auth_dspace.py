@@ -1,17 +1,24 @@
 import os
 import requests
 from typing import Optional, Dict, Any
+from dspace_config import get_config_value, get_config_path
 
-DSPACE_API_ROOT = os.getenv("DSPACE_API_ROOT", "/server/api")
-REST_BASE_URL = os.getenv("REST_BASE_URL", "").rstrip("/")
 
-# Формируем полный URL к API
-if DSPACE_API_ROOT.startswith("http://") or DSPACE_API_ROOT.startswith("https://"):
-    API_BASE = DSPACE_API_ROOT.rstrip("/")
-else:
-    if not REST_BASE_URL:
-        raise RuntimeError("REST_BASE_URL must be set for authentication")
-    API_BASE = f"{REST_BASE_URL}{DSPACE_API_ROOT}".rstrip("/")
+def _build_api_base(server_url: str) -> str:
+    if not server_url:
+        return ""
+    base = server_url.rstrip("/")
+    if base.endswith("/api"):
+        return base
+    return f"{base}/api"
+
+
+def _get_api_base() -> str:
+    server_url = get_config_value(
+        "dspace.server.url",
+        os.getenv("REST_BASE_URL", ""),
+    ).rstrip("/")
+    return _build_api_base(server_url).rstrip("/")
 
 
 def authenticate(email: str, password: str) -> Optional[str]:
@@ -19,7 +26,14 @@ def authenticate(email: str, password: str) -> Optional[str]:
     Авторизация пользователя через DSpace REST API.
     Возвращает JWT токен если успешно, None если нет.
     """
-    url = f"{API_BASE}/authn/login"
+    api_base = _get_api_base()
+    if not api_base:
+        config_path = get_config_path()
+        raise RuntimeError(
+            f"dspace.server.url is not set in {config_path} and REST_BASE_URL is empty."
+        )
+
+    url = f"{api_base}/authn/login"
 
     def extract_csrf(resp: requests.Response) -> tuple[Optional[str], Optional[str], Optional[str]]:
         token = resp.headers.get("DSPACE-XSRF-TOKEN")
@@ -47,7 +61,7 @@ def authenticate(email: str, password: str) -> Optional[str]:
 
         try:
             csrf_response = session.get(
-                f"{API_BASE}/authn/status",
+                f"{api_base}/authn/status",
                 headers={"Accept": "application/json"},
                 timeout=10,
                 allow_redirects=True,
@@ -126,7 +140,11 @@ def check_user_status(token: str) -> Optional[Dict[str, Any]]:
     Проверяет статус пользователя по токену.
     Возвращает информацию о пользователе если токен валиден.
     """
-    url = f"{API_BASE}/authn/status"
+    api_base = _get_api_base()
+    if not api_base:
+        return None
+
+    url = f"{api_base}/authn/status"
     
     try:
         headers = {"Authorization": f"Bearer {token}"}
@@ -243,7 +261,11 @@ def logout(token: str) -> bool:
     """
     Выход пользователя из системы.
     """
-    url = f"{API_BASE}/authn/logout"
+    api_base = _get_api_base()
+    if not api_base:
+        return False
+
+    url = f"{api_base}/authn/logout"
     
     try:
         headers = {"Authorization": f"Bearer {token}"}
