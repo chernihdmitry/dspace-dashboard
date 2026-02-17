@@ -2,12 +2,6 @@
 {% block page_title %}Динаміка завантажень за {{ year }} рік{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-end mb-3">
-  <a href="{{ url_for('statistics') }}" class="btn btn-outline-secondary">
-    <i class="bi bi-arrow-left"></i> Назад до завантажень
-  </a>
-</div>
-
 <form class="card card-soft mb-3" id="yearForm">
   <div class="card-body d-flex flex-wrap gap-2 align-items-end">
     <div>
@@ -20,6 +14,10 @@
     </div>
 
     <button type="submit" class="btn btn-primary">Показати</button>
+
+    <a href="{{ url_for('statistics') }}" class="btn btn-outline-secondary ms-auto">
+      <i class="bi bi-arrow-left"></i> Назад до завантажень
+    </a>
   </div>
 </form>
 
@@ -32,11 +30,8 @@
   });
 </script>
 
-<div class="text-secondary small mb-2">
-  Період: <span class="fw-semibold">{{ year }} рік</span>
-</div>
 {% block page_hint %}
-  <div class="text-secondary small mb-2">Графік показує динаміку переглядів та завантажень файлів по місяцях.</div>
+  <div class="text-secondary small mb-2">Графік динаміки переглядів та завантажень файлів за {{ year }} рік.</div>
 {% endblock %}
 
 {% if error %}

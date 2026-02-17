@@ -12,6 +12,8 @@ _cache: Dict[str, Any] = {}
 _cache_ttl: Dict[str, float] = {}
 _metadata_field_cache: Dict[str, Optional[int]] = {}
 
+ORCID_FIELD_ID_DEFAULT = 205
+
 
 def _cache_ttl_seconds() -> int:
     return int(os.getenv("CACHE_TTL_SECONDS", "300"))
@@ -134,6 +136,16 @@ def _metadata_field_id(schema: str, element: str, qualifier: Optional[str]) -> O
                 return value
     _metadata_field_cache[cache_key] = None
     return None
+
+
+def _orcid_field_id() -> Optional[int]:
+    raw = get_config_value("orcid.metadata.field-id", "") or os.getenv("ORCID_FIELD_ID", "")
+    if raw:
+        try:
+            return int(raw)
+        except ValueError:
+            return None
+    return ORCID_FIELD_ID_DEFAULT
 
 
 def _excluded_collection_uuid() -> str:
@@ -445,6 +457,8 @@ def researcher_profiles_by_period(year: int, month: int, collection_uuid: str):
     if not title_id:
         raise RuntimeError("Metadata field registry is missing required fields")
 
+    orcid_id = _orcid_field_id()
+
     sql = (
         "with profile_items as ("
         "  select i.uuid as owner_id "
@@ -464,13 +478,21 @@ def researcher_profiles_by_period(year: int, month: int, collection_uuid: str):
         "  from metadatavalue mv "
         "  where mv.metadata_field_id = %s "
         "  group by mv.dspace_object_id"
+        "), profile_orcid as ("
+        "  select mv.dspace_object_id as item_uuid, "
+        "         max(mv.text_value) as orcid "
+        "  from metadatavalue mv "
+        "  where mv.metadata_field_id = %s "
+        "  group by mv.dspace_object_id"
         ") "
         "select l.owner_id::text as owner_id, "
         "       coalesce(pt.title, l.owner_id::text) as profile_name, "
-        "       count(distinct l.entity_id) as publications "
+        "       count(distinct l.entity_id) as publications, "
+        "       max(po.orcid) as orcid "
         "from latest l "
         "join item i on i.uuid::text = l.owner_id::text "
         "left join profile_titles pt on pt.item_uuid = i.uuid "
+        "left join profile_orcid po on po.item_uuid = i.uuid "
         "where l.status in (200, 201) "
         "group by l.owner_id, profile_name "
         "order by publications desc, profile_name asc"
@@ -481,12 +503,17 @@ def researcher_profiles_by_period(year: int, month: int, collection_uuid: str):
         with conn.cursor() as cur:
             cur.execute(
                 sql,
-                (collection_uuid, start_dt, end_dt, title_id),
+                (collection_uuid, start_dt, end_dt, title_id, orcid_id),
             )
             rows = cur.fetchall()
 
     result = [
-        {"owner_id": row[0], "profile": row[1], "count": int(row[2])}
+        {
+            "owner_id": row[0],
+            "profile": row[1],
+            "count": int(row[2]),
+            "orcid": row[3],
+        }
         for row in rows
     ]
     _cache_set(cache_key, result)

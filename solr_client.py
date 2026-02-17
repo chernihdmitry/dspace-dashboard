@@ -107,21 +107,71 @@ def repo_totals():
     total_docs = _get(SOLR_SEARCH_URL, main_docs_query)["response"]["numFound"]
     person_profiles = _get(SOLR_SEARCH_URL, person_docs_query)["response"]["numFound"]
 
-    first_params = {"q": "archived:true", "sort": "dc.date.accessioned_dt asc", "rows": 2}
-    last_params  = {"q": "archived:true", "sort": "dc.date.accessioned_dt desc", "rows": 1}
+    def _first_date_for_field(field: str):
+        params = {
+            "q": "archived:true",
+            "fq": [
+                "discoverable:true",
+                "withdrawn:false",
+                "-entityType:Person",
+                f"{field}:[* TO *]",
+            ],
+            "sort": f"{field} asc",
+            "rows": 1,
+            "fl": field,
+            "q.op": "AND",
+        }
+        try:
+            docs = _get(SOLR_SEARCH_URL, params).get("response", {}).get("docs", [])
+        except Exception:
+            return None
+        if not docs:
+            return None
+        value = docs[0].get(field)
+        if isinstance(value, (list, tuple)):
+            return value[0] if value else None
+        return value
 
-    first_json = _get(SOLR_SEARCH_URL, first_params)
-    last_json  = _get(SOLR_SEARCH_URL, last_params)
+    def _last_date_for_field(field: str):
+        params = {
+            "q": "archived:true",
+            "fq": [
+                "discoverable:true",
+                "withdrawn:false",
+                "-entityType:Person",
+                f"{field}:[* TO *]",
+            ],
+            "sort": f"{field} desc",
+            "rows": 1,
+            "fl": field,
+            "q.op": "AND",
+        }
+        try:
+            docs = _get(SOLR_SEARCH_URL, params).get("response", {}).get("docs", [])
+        except Exception:
+            return None
+        if not docs:
+            return None
+        value = docs[0].get(field)
+        if isinstance(value, (list, tuple)):
+            return value[0] if value else None
+        return value
 
-    docs_first = first_json.get("response", {}).get("docs", [])
-    docs_last  = last_json.get("response", {}).get("docs", [])
+    date_fields = [
+        "dc.date.accessioned_dt",
+        "dc.date.issued_dt",
+        "dc.date.available_dt",
+    ]
 
-    first_date = (
-        docs_first[1].get("dc.date.accessioned_dt") if len(docs_first) > 1 else
-        docs_first[0].get("dc.date.accessioned_dt") if len(docs_first) == 1 else
-        None
-    )
-    last_date = docs_last[0].get("dc.date.accessioned_dt") if docs_last else None
+    first_date = None
+    last_date = None
+    for field in date_fields:
+        if first_date is None:
+            first_date = _first_date_for_field(field)
+        if last_date is None:
+            last_date = _last_date_for_field(field)
+        if first_date is not None and last_date is not None:
+            break
 
     facet_params = {
         "q": "*:*",
