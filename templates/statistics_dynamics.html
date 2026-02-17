@@ -1,8 +1,5 @@
 {% extends "base.html" %}
 {% block page_title %}Динаміка завантажень за {{ year }} рік{% endblock %}
-{% block page_hint %}
-  <div class="text-secondary small">Графік показує динаміку переглядів та завантажень файлів по місяцях.</div>
-{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-end mb-3">
@@ -34,6 +31,13 @@
     window.location.href = base.replace('/0', `/${y}`);
   });
 </script>
+
+<div class="text-secondary small mb-2">
+  Період: <span class="fw-semibold">{{ year }} рік</span>
+</div>
+{% block page_hint %}
+  <div class="text-secondary small mb-2">Графік показує динаміку переглядів та завантажень файлів по місяцях.</div>
+{% endblock %}
 
 {% if error %}
 <div class="alert alert-danger">

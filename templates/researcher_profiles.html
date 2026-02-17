@@ -1,8 +1,5 @@
 {% extends "base.html" %}
 {% block page_title %}Профілі дослідників — {% if month == 0 %}{{ month_name }}{% else %}{{ month_name }} {{ year }}{% endif %}{% endblock %}
-{% block page_hint %}
-  <div class="text-secondary small">Показуємо кількість публікацій, синхронізованих з ORCID для кожного профілю за вибраний період.</div>
-{% endblock %}
 
 {% block content %}
 {% if error %}
@@ -52,6 +49,9 @@
 <div class="text-secondary small mb-2">
   Період: <span class="fw-semibold">{% if month == 0 %}{{ month_name }}{% else %}{{ month_name }} {{ year }}{% endif %}</span>
 </div>
+{% block page_hint %}
+  <div class="text-secondary small mb-2">Показуємо кількість публікацій, синхронізованих з ORCID для кожного профілю за вибраний період.</div>
+{% endblock %}
 
 <div class="card card-soft">
   <div class="card-body">

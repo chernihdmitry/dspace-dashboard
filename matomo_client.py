@@ -85,10 +85,10 @@ def _matomo_request(method: str, params: Dict[str, Any]) -> Any:
         response = requests.post(url, data=data, timeout=MATOMO_TIMEOUT)
         response.raise_for_status()
         return response.json()
-    except requests.exceptions.Timeout:
-        raise Exception(f"Matomo API timeout ({MATOMO_TIMEOUT}s)")
-    except requests.exceptions.RequestException as e:
-        raise Exception(f"Matomo API error: {str(e)}")
+    except requests.exceptions.Timeout as exc:
+        raise Exception(f"Matomo API timeout ({MATOMO_TIMEOUT}s)") from exc
+    except requests.exceptions.RequestException as exc:
+        raise Exception(f"Matomo API error: {str(exc)}") from exc
 
 
 # -----------------------------

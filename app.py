@@ -1,4 +1,6 @@
 import os
+import logging
+from logging.handlers import RotatingFileHandler
 from datetime import date
 from flask import Flask, render_template, redirect, url_for, jsonify, request, flash, session
 from flask_caching import Cache
@@ -59,6 +61,27 @@ def create_app():
     
     # чтобы Flask/werkzeug учитывал заголовки от прокси (proto/host/prefix)
     app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1, x_prefix=1)
+
+    # ---- Auth logging ----
+    log_dir = os.path.join(os.path.dirname(__file__), "logs")
+    os.makedirs(log_dir, exist_ok=True)
+    login_log_path = os.path.join(log_dir, "dspace-dashboard.log")
+    def _build_logger(name: str, filename: str) -> logging.Logger:
+        logger = logging.getLogger(name)
+        if not logger.handlers:
+            handler = RotatingFileHandler(filename, maxBytes=2_000_000, backupCount=3)
+            formatter = logging.Formatter(
+                "%(asctime)s %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
+            logger.setLevel(logging.INFO)
+        return logger
+
+    login_logger = _build_logger("login_audit", login_log_path)
+    error_log_path = os.path.join(log_dir, "errors.log")
+    error_logger = _build_logger("errors_audit", error_log_path)
 
     # ---- Flask-Login Setup ----
     login_manager = LoginManager()
@@ -126,6 +149,8 @@ def create_app():
             password = request.form.get("password", "")
             
             if not email or not password:
+                ip_addr = request.headers.get("X-Forwarded-For", request.remote_addr)
+                login_logger.info("login_failed email=%s ip=%s reason=missing_fields", email, ip_addr)
                 flash("Введіть email та пароль", "danger")
                 return render_template("login.html", remembered_email=email)
             
@@ -133,10 +158,15 @@ def create_app():
             try:
                 token = auth_dspace.authenticate(email, password)
             except RuntimeError as exc:
+                ip_addr = request.headers.get("X-Forwarded-For", request.remote_addr)
+                login_logger.info("login_failed email=%s ip=%s reason=config_error", email, ip_addr)
+                error_logger.info("auth_config_error email=%s ip=%s error=%s", email, ip_addr, str(exc))
                 flash(str(exc), "danger")
                 return render_template("login.html", remembered_email=email)
             
             if not token:
+                ip_addr = request.headers.get("X-Forwarded-For", request.remote_addr)
+                login_logger.info("login_failed email=%s ip=%s reason=invalid_credentials", email, ip_addr)
                 flash("Невірний email або пароль", "danger")
                 return render_template("login.html", remembered_email=email)
             
@@ -144,11 +174,16 @@ def create_app():
             user_data = auth_dspace.check_user_status(token)
             
             if not user_data or not user_data.get("authenticated"):
+                ip_addr = request.headers.get("X-Forwarded-For", request.remote_addr)
+                login_logger.info("login_failed email=%s ip=%s reason=auth_status", email, ip_addr)
+                error_logger.info("auth_status_failed email=%s ip=%s", email, ip_addr)
                 flash("Помилка авторизації", "danger")
                 return render_template("login.html", remembered_email=email)
             
             # Проверяем права администратора
             if not auth_dspace.is_administrator(token, user_data):
+                ip_addr = request.headers.get("X-Forwarded-For", request.remote_addr)
+                login_logger.info("login_failed email=%s ip=%s reason=not_admin", email, ip_addr)
                 flash("Доступ тільки для адміністраторів", "danger")
                 return render_template("login.html", remembered_email=email)
             
@@ -160,6 +195,9 @@ def create_app():
             # Сохраняем в сессию
             session["token"] = token
             session["email"] = email
+
+            ip_addr = request.headers.get("X-Forwarded-For", request.remote_addr)
+            login_logger.info("login email=%s ip=%s", email, ip_addr)
             
             flash(f"Вітаємо, {email}!", "success")
             

@@ -49,20 +49,20 @@
         </a>
         </li>
 
-        {% if matomo_configured %}
-        <li class="nav-item">
-        <a class="nav-link {% if request.endpoint == 'matomo_page' %}active{% endif %}"
-            href="{{ url_for('matomo_page') }}">
-          <i class="bi bi-graph-up"></i> Matomo
-        </a>
-        </li>
-        {% endif %}
-
         {% if profiles_configured %}
         <li class="nav-item">
         <a class="nav-link {% if request.endpoint in ['researcher_profiles', 'researcher_profiles_period'] %}active{% endif %}"
           href="{{ url_for('researcher_profiles') }}">
           <i class="bi bi-person-vcard"></i> Профілі дослідників
+        </a>
+        </li>
+        {% endif %}
+
+        {% if matomo_configured %}
+        <li class="nav-item">
+        <a class="nav-link {% if request.endpoint == 'matomo_page' %}active{% endif %}"
+          href="{{ url_for('matomo_page') }}">
+          <i class="bi bi-graph-up"></i> Matomo
         </a>
         </li>
         {% endif %}
@@ -87,7 +87,6 @@
     <div>
       <h1 class="h3 mb-1">{% block page_title %}{% endblock %}</h1>
       <div class="text-secondary small">Оновлено: {{ today_str }}</div>
-      {% block page_hint %}{% endblock %}
     </div>
     {% block header_actions %}{% endblock %}
   </div>

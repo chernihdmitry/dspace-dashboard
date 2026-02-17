@@ -1,8 +1,5 @@
 {% extends "base.html" %}
 {% block page_title %}Відправники — {% if month == 0 %}{{ month_name }}{% else %}{{ month_name }} {{ year }}{% endif %}{% endblock %}
-{% block page_hint %}
-  <div class="text-secondary small">Показуємо кількість документів, надісланих кожним відправником за вибраний період. Натисніть на ім'я, щоб побачити колекції.</div>
-{% endblock %}
 
 {% block content %}
 {% if error %}
@@ -65,6 +62,9 @@
 <div class="text-secondary small mb-2">
   Період: <span class="fw-semibold">{% if month == 0 %}{{ month_name }}{% else %}{{ month_name }} {{ year }}{% endif %}</span>
 </div>
+{% block page_hint %}
+  <div class="text-secondary small mb-2">Показуємо кількість документів, надісланих кожним відправником за вибраний період. Натисніть на ім'я, щоб побачити колекції.</div>
+{% endblock %}
 
 <div class="card card-soft">
   <div class="card-body">

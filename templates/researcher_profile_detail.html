@@ -1,8 +1,5 @@
 {% extends "base.html" %}
 {% block page_title %}Профіль — {{ profile }}{% endblock %}
-{% block page_hint %}
-  <div class="text-secondary small">Список публікацій, які успішно синхронізовані з ORCID для цього профілю за вибраний період. Дата — остання успішна синхронізація.</div>
-{% endblock %}
 
 {% block content %}
 {% if error %}
@@ -57,6 +54,9 @@
 <div class="text-secondary small mb-2">
   Період: <span class="fw-semibold">{% if month == 0 %}{{ month_name }}{% else %}{{ month_name }} {{ year }}{% endif %}</span>
 </div>
+{% block page_hint %}
+  <div class="text-secondary small mb-2">Список публікацій, які успішно синхронізовані з ORCID для цього профілю за вибраний період. Дата — остання успішна синхронізація.</div>
+{% endblock %}
 
 <div class="card card-soft">
   <div class="card-body">
