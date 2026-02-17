@@ -33,6 +33,9 @@ SECRET_KEY=replace_with_random_64_chars
 CACHE_TTL_SECONDS=300
 START_YEAR=2025
 START_MONTH=1
+
+# ORCID metadata field id (required, varies by DSpace instance)
+ORCID_FIELD_ID=205
 EOF
 ```
 

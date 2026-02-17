@@ -12,7 +12,6 @@ _cache: Dict[str, Any] = {}
 _cache_ttl: Dict[str, float] = {}
 _metadata_field_cache: Dict[str, Optional[int]] = {}
 
-ORCID_FIELD_ID_DEFAULT = 205
 
 
 def _cache_ttl_seconds() -> int:
@@ -139,13 +138,13 @@ def _metadata_field_id(schema: str, element: str, qualifier: Optional[str]) -> O
 
 
 def _orcid_field_id() -> Optional[int]:
-    raw = get_config_value("orcid.metadata.field-id", "") or os.getenv("ORCID_FIELD_ID", "")
-    if raw:
-        try:
-            return int(raw)
-        except ValueError:
-            return None
-    return ORCID_FIELD_ID_DEFAULT
+    raw = os.getenv("ORCID_FIELD_ID", "")
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
 
 
 def _excluded_collection_uuid() -> str:
@@ -458,6 +457,8 @@ def researcher_profiles_by_period(year: int, month: int, collection_uuid: str):
         raise RuntimeError("Metadata field registry is missing required fields")
 
     orcid_id = _orcid_field_id()
+    if orcid_id is None:
+        raise RuntimeError("ORCID_FIELD_ID is not set in the environment")
 
     sql = (
         "with profile_items as ("
