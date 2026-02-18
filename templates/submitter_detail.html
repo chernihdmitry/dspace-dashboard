@@ -52,7 +52,7 @@
 </script>
 
 <div class="text-secondary small mb-2">
-  Колекції, до яких користувач {{ submitter }} відправляв документи у {{ year }} році.
+  Колекції, до яких користувач {{ submitter }} відправляв документи {% if selected_month == 0 %}у {{ year }} році{% else %}за {{ month_name }} {{ year }} року{% endif %}.
 </div>
 
 <div class="card card-soft">
