@@ -56,48 +56,67 @@
 <div class="card card-soft">
   <div class="card-body">
     <div class="table-responsive">
-      <tbody>
-        {% set ns = namespace(total=0) %}
-        {% for row in rows %}
-          {% set ns.total = ns.total + row.count %}
-          <tr>
-            <td class="text-truncate" style="max-width: 520px">
-              <a class="sender-link"
-                href="{{ url_for('researcher_profile_detail', owner_id=row.owner_id, year=selected_year, month=selected_month) }}">
-                <span class="sender-row">
-                  <span class="sender-icon">
-                    <i class="bi bi-person-vcard"></i>
-                  </span>
-
-                  <span class="sender-meta">
-                    <span class="sender-name">{{ row.profile }}</span>
-
-                    {% if row.orcid %}
-                      <span class="sender-email">
-                        <img src="{{ url_for('static', filename='orcid.logo.icon.svg') }}"
-                            alt="ORCID"
-                            style="height:14px;width:14px;margin-right:4px;">
-                        {{ row.orcid }}
-                      </span>
-                    {% endif %}
-                  </span>
-                </span>
-              </a>
-            </td>
-
-            <td class="fw-semibold text-end">{{ row.count|fmt }}</td>
+      <table class="table table-list align-middle mb-0">
+        <thead>
+          <tr class="text-secondary small">
+            <th><i class="bi bi-person-vcard"></i> Профіль</th>
+            <th class="text-end" style="width:160px">Публікацій</th>
           </tr>
-        {% else %}
-          <tr><td colspan="2" class="text-secondary">Немає даних</td></tr>
-        {% endfor %}
+        </thead>
+        <tbody>
+          {% set ns = namespace(total=0) %}
+          {% for row in rows %}
+            {% set ns.total = ns.total + row.count %}
+            <tr>
+              <td colspan="2">
+                <a class="d-flex align-items-center justify-content-between text-decoration-none"
+                   href="{{ url_for('researcher_profile_detail', owner_id=row.owner_id, year=selected_year, month=selected_month) }}">
 
-        {% if rows|length > 0 %}
-        <tr class="table-active border-top border-2">
-          <td class="fw-bold">Усього</td>
-          <td class="fw-bold text-end">{{ ns.total|fmt }}</td>
-        </tr>
-        {% endif %}
-      </tbody>
+<div class="d-flex align-items-center justify-content-between flex-nowrap" style="min-width:0;">
+
+  <!-- ЛЕВЫЙ БЛОК -->
+  <div class="d-flex align-items-center gap-2 flex-nowrap flex-grow-1"
+       style="min-width:0;">
+    <i class="bi bi-person-vcard flex-shrink-0 me-2"></i>
+
+    <span class="text-truncate" style="min-width:0;">
+      {{ row.profile }}
+    </span>
+
+    {% if row.orcid %}
+      <a href="https://orcid.org/{{ row.orcid }}"
+        target="_blank" rel="noopener"
+        class="orcid-link d-inline-flex align-items-center gap-1 text-secondary text-decoration-none flex-shrink-0"
+        style="white-space:nowrap;">
+        <img src="{{ url_for('static', filename='orcid.logo.icon.svg') }}"
+             alt="ORCID" style="height:14px;width:14px;">
+        {{ row.orcid }}
+      </a>
+    {% endif %}
+  </div>
+
+  <!-- ПРАВЫЙ БЛОК -->
+  <div class="fw-semibold ms-3 flex-shrink-0">
+    {{ row.count }}
+  </div>
+
+</div>
+
+                </a>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="2" class="text-secondary">Немає даних</td></tr>
+          {% endfor %}
+
+          {% if rows|length > 0 %}
+          <tr class="table-active border-top border-2">
+            <td class="fw-bold">Усього</td>
+            <td class="fw-bold text-end">{{ ns.total|fmt }}</td>
+          </tr>
+          {% endif %}
+        </tbody>
+      </table>
     </div>
   </div>
 </div>

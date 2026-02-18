@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block page_title %}Редагування документів — {{ month_name }}{% endblock %}
+{% block page_title %}Редагування документів — {% if month == 0 %}{{ month_name }}{% else %}{{ month_name }} {{ year }}{% endif %}{% endblock %}
 
 {% block content %}
 {% if error %}
@@ -9,20 +9,19 @@
 </div>
 {% endif %}
 
-<form class="card card-soft mb-3" id="periodForm" data-base-url="{{ url_for('item_edits_period', year=0, month=0) }}">
+<form class="card card-soft mb-3" id="periodForm" method="get">
   <div class="card-body d-flex flex-wrap gap-2 align-items-end">
     <div>
       <label class="form-label small text-secondary mb-1">Рік</label>
-      <select class="form-select" id="yearSel">
+      <select class="form-select" id="yearSel" name="year">
         {% for y in years %}
           <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
         {% endfor %}
       </select>
     </div>
-
     <div>
       <label class="form-label small text-secondary mb-1">Місяць</label>
-      <select class="form-select" id="monthSel">
+      <select class="form-select" id="monthSel" name="month">
         <option value="0" {% if selected_month == 0 %}selected{% endif %}>Усі</option>
         {% for m in months %}
           <option value="{{ m }}" {% if m == selected_month %}selected{% endif %}>
@@ -31,90 +30,97 @@
         {% endfor %}
       </select>
     </div>
-
     <button type="submit" class="btn btn-primary ms-auto">Показати</button>
-
-    <a class="btn btn-outline-secondary"
-       href="{{ url_for('item_edits_period', year=today_year, month=today_month) }}">
-      Поточний місяць
-    </a>
   </div>
 </form>
 
-<script>
-  document.getElementById('periodForm').addEventListener('submit', function(e){
-    e.preventDefault();
-    const y = document.getElementById('yearSel').value;
-    const m = document.getElementById('monthSel').value;
-    const form = document.getElementById('periodForm');
-    const base = form.dataset.baseUrl;
-    window.location.href = base.replace('/0/0', '/' + y + '/' + m);
-  });
-</script>
+<form class="mb-3" method="get" id="searchForm">
+  <div class="input-group">
+    <span class="input-group-text">
+      <i class="bi bi-search"></i>
+    </span>
+    <input type="text" class="form-control" name="q" placeholder="Пошук по імені, email або назві документа" value="{{ request.args.get('q', '') }}">
+    <button class="btn btn-outline-secondary" type="submit">Пошук</button>
+  </div>
+</form>
+
+
 
 <div class="text-secondary small mb-2">
-  Підрахунок підтверджених редагувань (`update_item`) з логів DSpace
-  {% if selected_month == 0 %}у {{ year }} році{% else %}за {{ month_name }} {{ year }} року{% endif %}.
+  Кількість редагувань документів кожним користувачем
+  {% if selected_month == 0 %}у {{ selected_year }} році{% else %}за {{ month_name }} {{ selected_year }} року{% endif %}.
+  Натисніть на email, щоб побачити деталі редагувань.
 </div>
 
-<div class="card card-soft">
-  <div class="card-body">
-    <div class="table-responsive">
-      <table class="table table-list align-middle mb-0">
-        <thead>
-          <tr class="text-secondary small">
-            <th style="width: 520px">
-              <i class="bi bi-person"></i> Користувач
-            </th>
-            <th class="text-end" style="width: 140px">Правок</th>
-            <th class="text-end" style="width: 190px">Унік. документів</th>
-            <th class="text-end" style="width: 210px">Остання правка</th>
-          </tr>
-        </thead>
-            <tbody>
-            {% set ns = namespace(total=0) %}
-            {% for row in rows %}
-                {% set ns.total = ns.total + row.count %}
-                <tr>
-                <td class="text-truncate" style="max-width:520px">
-                    <a class="sender-link"
-                    href="{{ url_for('researcher_profile_detail', owner_id=row.owner_id, year=selected_year, month=selected_month) }}">
-                    <span class="sender-row">
-                        <span class="sender-icon"><i class="bi bi-person-vcard"></i></span>
+{% if search_mode == 'doc' %}
+  <table class="table table-list align-middle mb-0">
+    <thead>
+      <tr class="text-secondary small">
+        <th>Назва документа</th>
+        <th>Ім'я користувача</th>
+        <th class="text-end">Email</th>
+        <th class="text-end">Правок</th>
+        <th class="text-end">Остання правка</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td class="text-truncate">{{ row.title }}</td>
+        <td class="text-truncate">{{ row.user_name }}</td>
+        <td class="text-end">{{ row.user_email }}</td>
+        <td class="fw-semibold text-end">{{ row.edits|fmt }}</td>
+        <td class="text-end">{{ row.last_edit.strftime('%d.%m.%Y %H:%M') if row.last_edit else '—' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="text-secondary">Немає даних</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% else %}
+  <table class="table table-list align-middle mb-0">
+    <thead>
+      <tr class="text-secondary small">
+        <th style="width: 320px"><i class="bi bi-person"></i> Ім'я та email користувача</th>
+        <th class="text-end" style="width:120px">Правок</th>
+        <th class="text-end" style="width:120px">Унікальних документів</th>
+        <th class="text-end" style="width:200px">Остання правка</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% set ns = namespace(total=0) %}
+      {% for row in rows %}
+        {% set ns.total = ns.total + row.edits %}
+        <tr>
+          <td class="text-truncate" style="max-width: 320px">
+            <a href="{{ url_for('item_edits_user_detail', user_email=row.user_email, year=selected_year, month=selected_month) }}" class="sender-link">
+              <span class="sender-row">
+                <span class="sender-icon"><i class="bi bi-person"></i></span>
+                <span class="sender-meta" style="display: flex; align-items: center; gap: 8px;">
+                  <span class="sender-name">{{ row.user_name if row.user_name else "—" }}</span>
+                  {% if row.user_email %}
+                    <span class="sender-email text-secondary">({{ row.user_email }})</span>
+                  {% endif %}
+                </span>
+              </span>
+            </a>
+          </td>
+          <td class="fw-semibold text-end">{{ row.edits|fmt }}</td>
+          <td class="fw-semibold text-end">{{ row.unique_items|fmt }}</td>
+          <td class="text-end">{{ row.last_edit.strftime('%d.%m.%Y %H:%M') if row.last_edit else '—' }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4" class="text-secondary">Немає даних</td></tr>
+      {% endfor %}
+      {% if rows|length > 0 %}
+      <tr class="table-active border-top border-2">
+        <td class="fw-bold">Усього</td>
+        <td class="fw-bold text-end">{{ ns.total|fmt }}</td>
+        <td colspan="2"></td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+{% endif %}
 
-                        <span class="sender-meta">
-                        <span class="sender-name">{{ row.profile }}</span>
-
-                        {% if row.orcid %}
-                        <span class="sender-email">
-                            <img src="{{ url_for('static', filename='orcid.logo.icon.svg') }}"
-                                alt="ORCID"
-                                style="height:14px;width:14px;margin-right:4px;">
-                            {{ row.orcid }}
-                        </span>
-                        {% endif %}
-                        </span>
-                    </span>
-                    </a>
-                </td>
-
-                <td class="text-end fw-semibold">
-                    {{ row.count|fmt }}
-                </td>
-                </tr>
-            {% else %}
-                <tr><td colspan="2" class="text-secondary">Немає даних</td></tr>
-            {% endfor %}
-
-            {% if rows|length > 0 %}
-            <tr class="table-active border-top border-2">
-                <td class="fw-bold">Усього</td>
-                <td class="fw-bold text-end">{{ ns.total|fmt }}</td>
-            </tr>
-            {% endif %}
-            </tbody>
-      </table>
-    </div>
-  </div>
-</div>
 {% endblock %}

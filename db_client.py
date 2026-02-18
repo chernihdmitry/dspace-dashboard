@@ -1,3 +1,80 @@
+def item_edits_search(year: int, month: int, q: str):
+    """
+    Универсальный поиск: если q совпадает с user_name/user_email — вернуть пользователей,
+    иначе — искать по названию документа и вернуть документы с редакторами.
+    Возвращает (rows, search_mode), где search_mode = 'user' или 'doc'.
+    """
+    start_dt, end_dt = _period_range(year, month)
+    q_like = f"%{q}%"
+    # Получить id полей для имени
+    firstname_id = _metadata_field_id("eperson", "firstname", None)
+    lastname_id = _metadata_field_id("eperson", "lastname", None)
+    # --- Поиск по пользователям ---
+    sql_user = (
+        "select e.user_email, "
+        "       count(*) as edits, "
+        "       count(distinct e.item_uuid::text) as unique_items, "
+        "       max(e.event_ts) as last_edit, "
+        "       max(concat_ws(' ', mv_first.text_value, mv_last.text_value)) as user_name "
+        "from dashboard_item_edit_events e "
+        "left join eperson ep on ep.email = e.user_email "
+        "left join metadatavalue mv_first on ep.uuid = mv_first.dspace_object_id and mv_first.metadata_field_id = %s "
+        "left join metadatavalue mv_last on ep.uuid = mv_last.dspace_object_id and mv_last.metadata_field_id = %s "
+        "where e.event_ts >= %s and e.event_ts <= %s "
+        "  and (lower(e.user_email) like lower(%s) or lower(coalesce(mv_first.text_value,'') || ' ' || coalesce(mv_last.text_value,'')) like lower(%s)) "
+        "group by e.user_email "
+        "order by edits desc, unique_items desc, e.user_email asc"
+    )
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql_user, (firstname_id, lastname_id, start_dt, end_dt, q_like, q_like))
+            user_rows = cur.fetchall()
+    if user_rows:
+        result = []
+        for row in user_rows:
+            result.append({
+                "user_email": row[0],
+                "edits": int(row[1]),
+                "unique_items": int(row[2]),
+                "last_edit": row[3],
+                "user_name": row[4] if len(row) > 4 else row[0],
+            })
+        return result, "user"
+
+    # --- Поиск по названию документа ---
+    title_id = _metadata_field_id("dc", "title", None)
+    if not title_id:
+        return [], "doc"
+    sql_doc = (
+        "select t.title, e.user_email, max(concat_ws(' ', mv_first.text_value, mv_last.text_value)) as user_name, count(*) as edits, max(e.event_ts) as last_edit "
+        "from dashboard_item_edit_events e "
+        "join ("
+        "  select mv.dspace_object_id as item_uuid, max(mv.text_value) as title "
+        "  from metadatavalue mv "
+        "  where mv.metadata_field_id = %s and lower(mv.text_value) like lower(%s) "
+        "  group by mv.dspace_object_id"
+        ") t on t.item_uuid = e.item_uuid "
+        "left join eperson ep on ep.email = e.user_email "
+        "left join metadatavalue mv_first on ep.uuid = mv_first.dspace_object_id and mv_first.metadata_field_id = %s "
+        "left join metadatavalue mv_last on ep.uuid = mv_last.dspace_object_id and mv_last.metadata_field_id = %s "
+        "where e.event_ts >= %s and e.event_ts <= %s "
+        "group by t.title, e.user_email "
+        "order by t.title, edits desc, last_edit desc"
+    )
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql_doc, (title_id, q_like, firstname_id, lastname_id, start_dt, end_dt))
+            doc_rows = cur.fetchall()
+    result = []
+    for row in doc_rows:
+        result.append({
+            "title": row[0],
+            "user_email": row[1],
+            "user_name": row[2],
+            "edits": int(row[3]),
+            "last_edit": row[4],
+        })
+    return result, "doc"
 import os
 import time
 from datetime import datetime, date, timedelta

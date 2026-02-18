@@ -702,18 +702,20 @@ def create_app():
         years = list(range(START_YEAR, today.year + 1))
         months = list(range(1, 13))
 
-        key = f"item_edits_{year}_{month}_v1"
-        rows = cache.get(key)
-
+        q = request.args.get("q", "").strip()
         error = None
-        if rows is None:
-            try:
+        rows = []
+        search_mode = None
+        try:
+            if q:
+                rows, search_mode = db.item_edits_search(year, month, q)
+            else:
                 rows = db.item_edit_totals_by_period(year, month)
-                cache.set(key, rows, timeout=CACHE_TTL_SECONDS)
-            except Exception as exc:
-                app.logger.exception("Item edits failed")
-                rows = []
-                error = str(exc)
+                search_mode = "user"
+        except Exception as exc:
+            app.logger.exception("Item edits failed")
+            rows = []
+            error = str(exc)
 
         month_name = MONTH_NAMES_UA.get(month, str(month)) if month else f"Усі місяці {year} року"
 
@@ -731,6 +733,8 @@ def create_app():
             month_names=MONTH_NAMES_UA,
             today_year=today.year,
             today_month=today.month,
+            q=q,
+            search_mode=search_mode,
         )
 
     @app.get("/item-edits/user/<path:user_email>/<int:year>/<int:month>")

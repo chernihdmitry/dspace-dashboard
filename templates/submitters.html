@@ -53,7 +53,7 @@
     const m = document.getElementById('monthSel').value;
 
     // Берём корректный base URL (с префиксом /dspace-dashboard, если он есть)
-    const base = {{ url_for('submitters_month', year=0, month=0)|tojson }};
+    const base = "{{ url_for('submitters_month', year=0, month=0) }}";
     window.location.href = base.replace('/0/0', `/${y}/${m}`);
   });
 </script>
@@ -91,10 +91,10 @@
                   <a class="sender-link" href="{{ url_for('submitter_detail', submitter_id=uuid, year=selected_year, month=selected_month) }}">
                     <span class="sender-row">
                       <span class="sender-icon"><i class="bi bi-person"></i></span>
-                      <span class="sender-meta">
+                      <span class="sender-meta" style="display: flex; align-items: center; gap: 8px;">
                         <span class="sender-name">{{ name if name else "—" }}</span>
                         {% if r.get('email') %}
-                          <span class="sender-email">{{ r.get('email') }}</span>
+                          <span class="sender-email text-secondary">({{ r.get('email') }})</span>
                         {% endif %}
                       </span>
                       {% if r.get('count') %}
@@ -105,7 +105,7 @@
                 {% else %}
                   <span class="sender-row">
                     <span class="sender-icon"><i class="bi bi-person"></i></span>
-                    <span class="sender-meta">
+                    <span class="sender-meta" style="display: flex; align-items: center; gap: 8px;">
                       <span class="sender-name">{{ name if name else "—" }}</span>
                       {% if r.get('email') %}
                         <span class="sender-email">{{ r.get('email') }}</span>
