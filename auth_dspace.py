@@ -1,7 +1,10 @@
 import os
+import logging
 import requests
 from typing import Optional, Dict, Any
 from dspace_config import get_config_value, get_config_path
+
+logger = logging.getLogger(__name__)
 
 
 def _build_api_base(server_url: str) -> str:
@@ -164,12 +167,14 @@ def is_administrator(token: str, user_data: Optional[Dict] = None) -> bool:
         user_data = check_user_status(token)
     
     if not user_data or not user_data.get("authenticated"):
+        logger.warning("is_administrator: user_data not authenticated")
         return False
     
     headers = {"Authorization": f"Bearer {token}"}
     
     # Получаем данные пользователя по ссылке _links.eperson
     eperson_link = user_data.get("_links", {}).get("eperson", {}).get("href")
+    logger.debug("is_administrator: eperson_link=%s", eperson_link)
     if eperson_link:
         try:
             response = requests.get(eperson_link, headers=headers, timeout=10)
@@ -178,6 +183,7 @@ def is_administrator(token: str, user_data: Optional[Dict] = None) -> bool:
                 
                 # Проверяем группы пользователя через _links.groups
                 groups_link = eperson_data.get("_links", {}).get("groups", {}).get("href")
+                logger.debug("is_administrator: groups_link=%s", groups_link)
                 if groups_link:
                     try:
                         groups_response = requests.get(groups_link, headers=headers, timeout=10)
@@ -186,56 +192,72 @@ def is_administrator(token: str, user_data: Optional[Dict] = None) -> bool:
                             
                             # Проверяем _embedded.groups
                             user_groups = groups_data.get("_embedded", {}).get("groups", [])
+                            logger.debug("is_administrator: found %d groups via _embedded", len(user_groups))
                             
                             for group in user_groups:
                                 group_name = group.get("name", "")
+                                logger.debug("is_administrator: checking group=%s", group_name)
                                 
                                 if "administrator" in group_name.lower():
+                                    logger.info("is_administrator: FOUND admin via _embedded.groups")
                                     return True
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning("is_administrator: failed to get groups via _links.groups: %s", str(e))
                 
                 # Проверяем группы в eperson данных
                 groups = eperson_data.get("groups", [])
+                logger.debug("is_administrator: eperson_data has %d groups directly", len(groups) if groups else 0)
                 if groups:
                     for group in groups:
                         group_name = group.get("name", "").lower()
+                        logger.debug("is_administrator: checking direct group=%s", group_name)
                         if "administrator" in group_name:
+                            logger.info("is_administrator: FOUND admin via eperson.groups")
                             return True
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("is_administrator: failed to get eperson_link data: %s", str(e))
     
     # Проверяем specialGroups по ссылке
     special_groups_link = user_data.get("_links", {}).get("specialGroups", {}).get("href")
+    logger.debug("is_administrator: special_groups_link=%s", special_groups_link)
     if special_groups_link:
         try:
             response = requests.get(special_groups_link, headers=headers, timeout=10)
             if response.status_code == 200:
                 groups_data = response.json()
                 groups = groups_data.get("_embedded", {}).get("groups", [])
+                logger.debug("is_administrator: found %d groups via specialGroups", len(groups))
                 
                 for group in groups:
                     group_name = group.get("name", "")
+                    logger.debug("is_administrator: checking special group=%s", group_name)
                     
                     if "administrator" in group_name.lower():
+                        logger.info("is_administrator: FOUND admin via specialGroups")
                         return True
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("is_administrator: failed to get specialGroups: %s", str(e))
     
     # Проверяем группы пользователя в user_data (если есть)
     groups = user_data.get("groups", [])
+    logger.debug("is_administrator: user_data has %d groups directly", len(groups) if groups else 0)
     
     for group in groups:
         group_name = group.get("name", "").lower()
+        logger.debug("is_administrator: checking top-level group=%s", group_name)
         if "administrator" in group_name:
+            logger.info("is_administrator: FOUND admin via user_data.groups")
             return True
     
     # Вариант через _embedded
     if "_embedded" in user_data:
         embedded_groups = user_data["_embedded"].get("specialGroups", [])
+        logger.debug("is_administrator: found %d groups via _embedded.specialGroups", len(embedded_groups))
         for group in embedded_groups:
             group_name = group.get("name", "").lower()
+            logger.debug("is_administrator: checking embedded group=%s", group_name)
             if "administrator" in group_name:
+                logger.info("is_administrator: FOUND admin via _embedded.specialGroups")
                 return True
     
     # Fallback: ADMIN_EMAILS
@@ -244,17 +266,99 @@ def is_administrator(token: str, user_data: Optional[Dict] = None) -> bool:
             response = requests.get(eperson_link, headers=headers, timeout=10)
             if response.status_code == 200:
                 email = response.json().get("email", "").lower()
+                logger.debug("is_administrator: fallback check for email=%s", email)
                 
                 # Проверяем ADMIN_EMAILS
                 admin_emails = os.getenv("ADMIN_EMAILS", "").lower().split(",")
                 admin_emails = [e.strip() for e in admin_emails if e.strip()]
+                logger.debug("is_administrator: ADMIN_EMAILS configured=%d", len(admin_emails))
                 
                 if email in admin_emails:
+                    logger.info("is_administrator: FOUND admin via ADMIN_EMAILS fallback")
                     return True
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("is_administrator: failed fallback ADMIN_EMAILS check: %s", str(e))
     
+    logger.warning("is_administrator: NOT FOUND - no admin groups detected")
     return False
+
+
+def _get_user_groups_debug(token: str, user_data: Optional[Dict] = None) -> Dict[str, Any]:
+    """
+    Вспомогательная функция для отладки - возвращает все найденные группы пользователя.
+    """
+    if not user_data:
+        user_data = check_user_status(token)
+    
+    result = {
+        "authenticated": bool(user_data and user_data.get("authenticated")),
+        "groups_via_embedded": [],
+        "groups_via_eperson": [],
+        "groups_via_special": [],
+        "groups_toplevel": [],
+        "email": None,
+        "errors": []
+    }
+    
+    if not result["authenticated"]:
+        return result
+    
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    try:
+        # Пробуем получить email для логирования
+        eperson_link = user_data.get("_links", {}).get("eperson", {}).get("href")
+        if eperson_link:
+            resp = requests.get(eperson_link, headers=headers, timeout=10)
+            if resp.status_code == 200:
+                result["email"] = resp.json().get("email")
+        
+        # Группы через _embedded.specialGroups
+        if "_embedded" in user_data and "specialGroups" in user_data["_embedded"]:
+            for group in user_data["_embedded"].get("specialGroups", []):
+                group_name = group.get("name", "")
+                result["groups_via_embedded"].append(group_name)
+        
+        # Группы через eperson link
+        if eperson_link:
+            resp = requests.get(eperson_link, headers=headers, timeout=10)
+            if resp.status_code == 200:
+                eperson_data = resp.json()
+                
+                # Прямые группы в eperson
+                for group in eperson_data.get("groups", []):
+                    group_name = group.get("name", "")
+                    result["groups_via_eperson"].append(group_name)
+                
+                # Группы через groups link
+                groups_link = eperson_data.get("_links", {}).get("groups", {}).get("href")
+                if groups_link:
+                    resp = requests.get(groups_link, headers=headers, timeout=10)
+                    if resp.status_code == 200:
+                        groups_data = resp.json()
+                        for group in groups_data.get("_embedded", {}).get("groups", []):
+                            group_name = group.get("name", "")
+                            result["groups_via_eperson"].append(group_name)
+        
+        # SpecialGroups через link
+        special_link = user_data.get("_links", {}).get("specialGroups", {}).get("href")
+        if special_link:
+            resp = requests.get(special_link, headers=headers, timeout=10)
+            if resp.status_code == 200:
+                groups_data = resp.json()
+                for group in groups_data.get("_embedded", {}).get("groups", []):
+                    group_name = group.get("name", "")
+                    result["groups_via_special"].append(group_name)
+        
+        # Топлевель группы
+        for group in user_data.get("groups", []):
+            group_name = group.get("name", "")
+            result["groups_toplevel"].append(group_name)
+    
+    except Exception as e:
+        result["errors"].append(str(e))
+    
+    return result
 
 
 def logout(token: str) -> bool:

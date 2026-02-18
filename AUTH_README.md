@@ -76,7 +76,16 @@ dspace.server.url = https://repository.example.edu
 
 - Убедитесь, что ваш пользователь входит в группу "Administrator" в DSpace
 - Проверьте переменную `ADMIN_EMAILS` в конфигурации
-- Проверьте логи для деталей проверки прав
+- **Отладка администраторских прав**: При неудачной проверке в логе `errors.log` будут выведены все обнаруженные группы пользователя в формате `admin_check_failed`. Посмотрите содержимое переменной `groups_debug`, которая показывает:
+  - `groups_via_eperson`: группы, полученные через API endpoint `/api/eperson/{id}/groups`
+  - `groups_via_special`: группы, полученные через `/api/authz/specialgroups`
+  - `groups_toplevel`: группы в корневой ответ `/api/authn/status`
+  - `groups_via_embedded`: группы в `_embedded.specialGroups`
+- Проверьте именно название группы в DSpace - оно должно содержать слово "administrator" (проверяется case-insensitive)
+- Если в разных окружениях разные имена групп, используйте переменную `ADMIN_EMAILS` как fallback:
+  ```bash
+  ADMIN_EMAILS="i.putilina@ukr.net,other-admin@example.com"
+  ```
 
 ### Проблема: "Помилка авторизації"
 

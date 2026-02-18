@@ -66,6 +66,15 @@ def create_app():
     log_dir = os.path.join(os.path.dirname(__file__), "logs")
     os.makedirs(log_dir, exist_ok=True)
     login_log_path = os.path.join(log_dir, "dspace-dashboard.log")
+    
+    # Определяем уровень логирования из переменной окружения
+    # Может быть: DEBUG, INFO, WARNING, ERROR, CRITICAL
+    log_level_str = os.getenv("LOG_LEVEL", "INFO").upper()
+    try:
+        log_level = getattr(logging, log_level_str)
+    except AttributeError:
+        log_level = logging.INFO
+    
     def _build_logger(name: str, filename: str) -> logging.Logger:
         logger = logging.getLogger(name)
         if not logger.handlers:
@@ -76,12 +85,24 @@ def create_app():
             )
             handler.setFormatter(formatter)
             logger.addHandler(handler)
-            logger.setLevel(logging.INFO)
+            logger.setLevel(log_level)  # Используем переменную LOG_LEVEL
         return logger
 
     login_logger = _build_logger("login_audit", login_log_path)
     error_log_path = os.path.join(log_dir, "errors.log")
     error_logger = _build_logger("errors_audit", error_log_path)
+    
+    # Также устанавливаем уровень для auth_dspace логгера
+    auth_logger = logging.getLogger("auth_dspace")
+    if not auth_logger.handlers:
+        handler = RotatingFileHandler(error_log_path, maxBytes=2_000_000, backupCount=3)
+        formatter = logging.Formatter(
+            "%(asctime)s [auth_dspace] %(levelname)s %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+        handler.setFormatter(formatter)
+        auth_logger.addHandler(handler)
+    auth_logger.setLevel(log_level)
 
     # ---- Flask-Login Setup ----
     login_manager = LoginManager()
@@ -183,6 +204,12 @@ def create_app():
             # Проверяем права администратора
             if not auth_dspace.is_administrator(token, user_data):
                 ip_addr = request.headers.get("X-Forwarded-For", request.remote_addr)
+                # Соберём отладную информацию о группах пользователя
+                groups_debug = auth_dspace._get_user_groups_debug(token, user_data)
+                error_logger.warning(
+                    "admin_check_failed email=%s ip=%s groups_debug=%s",
+                    email, ip_addr, str(groups_debug)
+                )
                 login_logger.info("login_failed email=%s ip=%s reason=not_admin", email, ip_addr)
                 flash("Доступ тільки для адміністраторів", "danger")
                 return render_template("login.html", remembered_email=email)
