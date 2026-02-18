@@ -9,11 +9,11 @@
 </div>
 {% endif %}
 
-<form class="card card-soft mb-3" id="periodForm" method="get">
+<form class="card card-soft mb-3" id="periodForm">
   <div class="card-body d-flex flex-wrap gap-2 align-items-end">
     <div>
       <label class="form-label small text-secondary mb-1">Рік</label>
-      <select class="form-select" id="yearSel" name="year">
+      <select class="form-select" id="yearSel">
         {% for y in years %}
           <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
         {% endfor %}
@@ -21,7 +21,7 @@
     </div>
     <div>
       <label class="form-label small text-secondary mb-1">Місяць</label>
-      <select class="form-select" id="monthSel" name="month">
+      <select class="form-select" id="monthSel">
         <option value="0" {% if selected_month == 0 %}selected{% endif %}>Усі</option>
         {% for m in months %}
           <option value="{{ m }}" {% if m == selected_month %}selected{% endif %}>
@@ -33,6 +33,16 @@
     <button type="submit" class="btn btn-primary ms-auto">Показати</button>
   </div>
 </form>
+
+<script>
+  document.getElementById('periodForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    const y = document.getElementById('yearSel').value;
+    const m = document.getElementById('monthSel').value;
+    const base = {{ url_for('item_edits_period', year=0, month=0)|tojson }};
+    window.location.href = base.replace('/0/0', `/${y}/${m}`);
+  });
+</script>
 
 <form class="mb-3" method="get" id="searchForm">
   <div class="input-group">
@@ -49,7 +59,7 @@
 <div class="text-secondary small mb-2">
   Кількість редагувань документів кожним користувачем
   {% if selected_month == 0 %}у {{ selected_year }} році{% else %}за {{ month_name }} {{ selected_year }} року{% endif %}.
-  Натисніть на email, щоб побачити деталі редагувань.
+  Натисніть на ім'я користувача, щоб побачити деталі редагувань.
 </div>
 
 {% if search_mode == 'doc' %}
@@ -81,7 +91,7 @@
   <table class="table table-list align-middle mb-0">
     <thead>
       <tr class="text-secondary small">
-        <th style="width: 320px"><i class="bi bi-person"></i> Ім'я та email користувача</th>
+        <th style="width: 320px"><i class="bi bi-person"></i> Користувач</th>
         <th class="text-end" style="width:120px">Правок</th>
         <th class="text-end" style="width:120px">Унікальних документів</th>
         <th class="text-end" style="width:200px">Остання правка</th>
@@ -116,7 +126,8 @@
       <tr class="table-active border-top border-2">
         <td class="fw-bold">Усього</td>
         <td class="fw-bold text-end">{{ ns.total|fmt }}</td>
-        <td colspan="2"></td>
+        <td class="fw-bold text-end">{{ rows|map(attribute='unique_items')|sum|fmt }}</td>
+        <td colspan="1"></td>
       </tr>
       {% endif %}
     </tbody>

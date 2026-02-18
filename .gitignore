@@ -64,3 +64,4 @@ htmlcov/
 # ---------------------------
 config.local.py
 local_settings.py
+check_dspace_api.sh
