@@ -69,15 +69,20 @@
             {% set ns.total = ns.total + row.count %}
             <tr>
               <td class="text-truncate" style="max-width: 520px">
-                <a href="{{ url_for('researcher_profile_detail', owner_id=row.owner_id, year=selected_year, month=selected_month) }}">
-                  <i class="bi bi-person-vcard"></i> {{ row.profile }}
+                <a class="sender-link" href="{{ url_for('researcher_profile_detail', owner_id=row.owner_id, year=selected_year, month=selected_month) }}">
+                  <span class="sender-row">
+                    <span class="sender-icon"><i class="bi bi-person-vcard"></i></span>
+                    <span class="sender-meta">
+                      <span class="sender-name">{{ row.profile }}</span>
+                      {% if row.orcid %}
+                        <a class="ms-2 text-secondary text-decoration-none" href="https://orcid.org/{{ row.orcid }}" target="_blank" rel="noopener" aria-label="ORCID" title="https://orcid.org/{{ row.orcid }}">
+                          <img src="{{ url_for('static', filename='orcid.logo.icon.svg') }}" alt="ORCID" style="height:16px; width:16px;">
+                          <span class="small ms-1">{{ row.orcid }}</span>
+                        </a>
+                      {% endif %}
+                    </span>
+                  </span>
                 </a>
-                {% if row.orcid %}
-                  <a class="ms-2 text-secondary text-decoration-none" href="https://orcid.org/{{ row.orcid }}" target="_blank" rel="noopener" aria-label="ORCID" title="https://orcid.org/{{ row.orcid }}">
-                    <img src="{{ url_for('static', filename='orcid.logo.icon.svg') }}" alt="ORCID" style="height:16px; width:16px;">
-                    <span class="small ms-1">{{ row.orcid }}</span>
-                  </a>
-                {% endif %}
               </td>
               <td class="fw-semibold text-end">{{ row.count|fmt }}</td>
             </tr>
