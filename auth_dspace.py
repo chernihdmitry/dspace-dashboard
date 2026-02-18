@@ -11,9 +11,14 @@ def _build_api_base(server_url: str) -> str:
     if not server_url:
         return ""
     base = server_url.rstrip("/")
+    # Если уже полный путь с /api или /server/api - возвращаем как есть
     if base.endswith("/api"):
         return base
-    return f"{base}/api"
+    # Если заканчивается на /server - добавляем /api
+    if base.endswith("/server"):
+        return f"{base}/api"
+    # Если это просто домен, возвращаем без изменений - пробуем оба варианта при авторизации
+    return base
 
 
 def _get_api_base() -> str:
@@ -36,106 +41,148 @@ def authenticate(email: str, password: str) -> Optional[str]:
             f"dspace.server.url is not set in {config_path} and REST_BASE_URL is empty."
         )
 
-    url = f"{api_base}/authn/login"
+    # Генерируем разные варианты API пути для поддержки разных версий DSpace
+    api_candidates = []
+    
+    # Если api_base уже содержит /api или /server/api - используем как есть
+    if api_base.endswith("/api"):
+        api_candidates.append(api_base)
+        # Добавляем альтернативу
+        if "/server/api" in api_base:
+            api_candidates.append(api_base.replace("/server/api", "/api"))
+        else:
+            api_candidates.append(api_base.replace("/api", "/server/api"))
+    else:
+        # Пробуем /server/api и /api варианты
+        api_candidates = [
+            f"{api_base}/server/api",
+            f"{api_base}/api",
+        ]
+    
+    logger.debug("authenticate: trying api_candidates %s", api_candidates)
 
-    def extract_csrf(resp: requests.Response) -> tuple[Optional[str], Optional[str], Optional[str]]:
-        token = resp.headers.get("DSPACE-XSRF-TOKEN")
-        cookie_name = None
-        cookie_val = (
-            resp.cookies.get("DSPACE-XSRF-COOKIE")
-            or resp.cookies.get("DSPACE-XSRF-TOKEN")
-        )
-        if resp.cookies.get("DSPACE-XSRF-COOKIE"):
-            cookie_name = "DSPACE-XSRF-COOKIE"
-        elif resp.cookies.get("DSPACE-XSRF-TOKEN"):
-            cookie_name = "DSPACE-XSRF-TOKEN"
+    for attempt_url, api_base_attempt in enumerate([(c, c) for c in api_candidates]):
+        api_base_try = api_base_attempt[1]
+        url = f"{api_base_try}/authn/login"
+        
+        logger.debug("authenticate: attempt %d with url=%s", attempt_url + 1, url)
 
-        if not token and cookie_val:
-            token = cookie_val
-        return token, cookie_name, cookie_val
+        def extract_csrf(resp: requests.Response) -> tuple[Optional[str], Optional[str], Optional[str]]:
+            token = resp.headers.get("DSPACE-XSRF-TOKEN")
+            cookie_name = None
+            cookie_val = (
+                resp.cookies.get("DSPACE-XSRF-COOKIE")
+                or resp.cookies.get("DSPACE-XSRF-TOKEN")
+            )
+            if resp.cookies.get("DSPACE-XSRF-COOKIE"):
+                cookie_name = "DSPACE-XSRF-COOKIE"
+            elif resp.cookies.get("DSPACE-XSRF-TOKEN"):
+                cookie_name = "DSPACE-XSRF-TOKEN"
 
-    try:
-        session = requests.Session()
-
-        # Шаг 1: Получаем CSRF токен (если сервер его выдает)
-        csrf_token = None
-        csrf_cookie_name = None
-        csrf_cookie_val = None
+            if not token and cookie_val:
+                token = cookie_val
+            return token, cookie_name, cookie_val
 
         try:
-            csrf_response = session.get(
-                f"{api_base}/authn/status",
-                headers={"Accept": "application/json"},
-                timeout=10,
-                allow_redirects=True,
-            )
-            csrf_token, csrf_cookie_name, csrf_cookie_val = extract_csrf(csrf_response)
-        except Exception:
-            # Если не удалось получить CSRF, попробуем логин без него
-            pass
+            session = requests.Session()
 
-        if csrf_cookie_name and csrf_cookie_val:
-            session.cookies.set(csrf_cookie_name, csrf_cookie_val)
+            # Шаг 1: Получаем CSRF токен (если сервер его выдает)
+            csrf_token = None
+            csrf_cookie_name = None
+            csrf_cookie_val = None
 
-        # Шаг 2: Отправляем запрос на логин (с CSRF токеном если он есть)
-        headers = {
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Accept": "application/json",
-        }
-        if csrf_token:
-            headers["X-XSRF-TOKEN"] = csrf_token
-
-        response = session.post(
-            url,
-            data={"user": email, "password": password},
-            headers=headers,
-            timeout=10,
-            allow_redirects=False,
-        )
-
-        # Если сервер требует CSRF и отдал токен только при попытке логина
-        if response.status_code in (401, 403) and not csrf_token:
-            retry_token, retry_cookie_name, retry_cookie_val = extract_csrf(response)
-            if retry_cookie_name and retry_cookie_val:
-                session.cookies.set(retry_cookie_name, retry_cookie_val)
-            if retry_token:
-                headers["X-XSRF-TOKEN"] = retry_token
-                response = session.post(
-                    url,
-                    data={"user": email, "password": password},
-                    headers=headers,
-                    timeout=10,
-                    allow_redirects=False,
-                )
-
-        # DSpace возвращает 200 при успешной авторизации
-        if response.status_code == 200:
-            # Токен приходит в заголовке Authorization
-            auth_header = response.headers.get("Authorization")
-            if auth_header:
-                if auth_header.startswith("Bearer "):
-                    return auth_header.replace("Bearer ", "")
-                return auth_header
-            
-            # Также проверяем обновленный CSRF токен в куках
-            new_csrf_token = (
-                response.cookies.get("DSPACE-XSRF-TOKEN")
-                or response.cookies.get("DSPACE-XSRF-COOKIE")
-            )
-            if new_csrf_token:
-                return new_csrf_token
-            
-            # Проверяем тело ответа
             try:
-                data = response.json()
-                if data.get("authenticated"):
-                    return new_csrf_token or csrf_token or "authenticated"
-            except:
+                csrf_response = session.get(
+                    f"{api_base_try}/authn/status",
+                    headers={"Accept": "application/json"},
+                    timeout=10,
+                    allow_redirects=True,
+                )
+                csrf_token, csrf_cookie_name, csrf_cookie_val = extract_csrf(csrf_response)
+            except Exception as e:
+                # Если не удалось получить CSRF, попробуем логин без него
+                logger.debug("authenticate: failed to get CSRF: %s", str(e))
                 pass
-        
-        return None
-    except Exception:
-        return None
+
+            if csrf_cookie_name and csrf_cookie_val:
+                session.cookies.set(csrf_cookie_name, csrf_cookie_val)
+
+            # Шаг 2: Отправляем запрос на логин (с CSRF токеном если он есть)
+            headers = {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Accept": "application/json",
+            }
+            if csrf_token:
+                headers["X-XSRF-TOKEN"] = csrf_token
+
+            response = session.post(
+                url,
+                data={"user": email, "password": password},
+                headers=headers,
+                timeout=10,
+                allow_redirects=False,
+            )
+            
+            logger.debug("authenticate: POST response status=%d", response.status_code)
+
+            # Если сервер требует CSRF и отдал токен только при попытке логина
+            if response.status_code in (401, 403) and not csrf_token:
+                retry_token, retry_cookie_name, retry_cookie_val = extract_csrf(response)
+                if retry_cookie_name and retry_cookie_val:
+                    session.cookies.set(retry_cookie_name, retry_cookie_val)
+                if retry_token:
+                    headers["X-XSRF-TOKEN"] = retry_token
+                    response = session.post(
+                        url,
+                        data={"user": email, "password": password},
+                        headers=headers,
+                        timeout=10,
+                        allow_redirects=False,
+                    )
+
+            # DSpace возвращает 200 при успешной авторизации
+            if response.status_code == 200:
+                # Токен приходит в заголовке Authorization
+                auth_header = response.headers.get("Authorization")
+                if auth_header:
+                    if auth_header.startswith("Bearer "):
+                        logger.info("authenticate: success with api=%s", api_base_try)
+                        return auth_header.replace("Bearer ", "")
+                    return auth_header
+                
+                # Также проверяем обновленный CSRF токен в куках
+                new_csrf_token = (
+                    response.cookies.get("DSPACE-XSRF-TOKEN")
+                    or response.cookies.get("DSPACE-XSRF-COOKIE")
+                )
+                if new_csrf_token:
+                    logger.info("authenticate: success with api=%s (csrf)", api_base_try)
+                    return new_csrf_token
+                
+                # Проверяем тело ответа
+                try:
+                    data = response.json()
+                    if data.get("authenticated"):
+                        logger.info("authenticate: success with api=%s (json)", api_base_try)
+                        return new_csrf_token or csrf_token or "authenticated"
+                except:
+                    pass
+            elif response.status_code == 404:
+                # API path не найден при первой попытке, пробуем следующий
+                logger.debug("authenticate: 404 for %s, trying next candidate", url)
+                continue
+            
+            # Если статус not 200 и not 404, скорее всего это ошибка аутентификации, выходим
+            logger.debug("authenticate: unexpected status %d for %s", response.status_code, url)
+            return None
+            
+        except Exception as e:
+            logger.debug("authenticate: exception with api=%s: %s", api_base_try, str(e))
+            continue
+    
+    # Ни один вариант не сработал
+    logger.warning("authenticate: failed all api candidates")
+    return None
 
 
 def check_user_status(token: str) -> Optional[Dict[str, Any]]:
