@@ -70,7 +70,7 @@
 <div class="card card-soft">
   <div class="card-body">
     <div class="table-responsive">
-      <table class="table align-middle mb-0">
+      <table class="table table-list align-middle mb-0">
         <thead>
           <tr class="text-secondary small">
             <th><i class="bi bi-person"></i> Відправник</th>
@@ -88,11 +88,33 @@
             <tr>
               <td class="text-truncate" style="max-width: 520px">
                 {% if uuid %}
-                  <a href="{{ url_for('submitter_detail', submitter_id=uuid, year=selected_year, month=selected_month) }}">
-                    <i class="bi bi-person"></i> {{ name if name else "—" }}
+                  <a class="sender-link" href="{{ url_for('submitter_detail', submitter_id=uuid, year=selected_year, month=selected_month) }}">
+                    <span class="sender-row">
+                      <span class="sender-icon"><i class="bi bi-person"></i></span>
+                      <span class="sender-meta">
+                        <span class="sender-name">{{ name if name else "—" }}</span>
+                        {% if r.get('email') %}
+                          <span class="sender-email">{{ r.get('email') }}</span>
+                        {% endif %}
+                      </span>
+                      {% if r.get('count') %}
+                        <span class="sender-count">{{ r.get('count') }}</span>
+                      {% endif %}
+                    </span>
                   </a>
                 {% else %}
-                  <i class="bi bi-person"></i> {{ name if name else "—" }}
+                  <span class="sender-row">
+                    <span class="sender-icon"><i class="bi bi-person"></i></span>
+                    <span class="sender-meta">
+                      <span class="sender-name">{{ name if name else "—" }}</span>
+                      {% if r.get('email') %}
+                        <span class="sender-email">{{ r.get('email') }}</span>
+                      {% endif %}
+                    </span>
+                    {% if r.get('count') %}
+                      <span class="sender-count">{{ r.get('count') }}</span>
+                    {% endif %}
+                  </span>
                 {% endif %}
               </td>
               <td class="fw-semibold text-end">{{ cnt|fmt }}</td>

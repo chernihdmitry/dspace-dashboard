@@ -140,6 +140,13 @@ def create_app():
     # ---- Globals ----
     @app.context_processor
     def inject_globals():
+        parser_run_dt = db.parser_last_run("dspace_item_edits")
+        today_or_parser = (
+            parser_run_dt.strftime("%d.%m.%Y %H:%M")
+            if parser_run_dt
+            else date.today().strftime("%d.%m.%Y")
+        )
+
         return {
             "APP_TITLE": APP_TITLE,
             "REPO_NAME": get_config_value(
@@ -147,7 +154,7 @@ def create_app():
                 os.getenv("REPO_NAME", "DSpace"),
             ),
             "APP_VERSION": APP_VERSION,
-            "today_str": date.today().strftime("%d.%m.%Y"),
+            "today_str": today_or_parser,
             "matomo_configured": matomo.is_configured(),
             "profiles_configured": bool(
                 get_config_value("researcher-profile.collection.uuid", "").strip()
@@ -667,6 +674,92 @@ def create_app():
             collection_id=collection_id,
             collection=detail.get("collection", collection_id),
             items=detail.get("items", []),
+            ui_base_url=get_config_value("dspace.ui.url", "").rstrip("/"),
+            error=error,
+            year=year,
+            month=month,
+            month_name=month_name,
+            years=years,
+            months=months,
+            selected_year=year,
+            selected_month=month,
+            month_names=MONTH_NAMES_UA,
+        )
+
+    @app.get("/item-edits")
+    @login_required
+    def item_edits():
+        today = date.today()
+        return redirect(url_for("item_edits_period", year=today.year, month=0))
+
+    @app.get("/item-edits/<int:year>/<int:month>")
+    @login_required
+    def item_edits_period(year: int, month: int):
+        if month < 0 or month > 12:
+            return redirect(url_for("item_edits"))
+
+        today = date.today()
+        years = list(range(START_YEAR, today.year + 1))
+        months = list(range(1, 13))
+
+        key = f"item_edits_{year}_{month}_v1"
+        rows = cache.get(key)
+
+        error = None
+        if rows is None:
+            try:
+                rows = db.item_edit_totals_by_period(year, month)
+                cache.set(key, rows, timeout=CACHE_TTL_SECONDS)
+            except Exception as exc:
+                app.logger.exception("Item edits failed")
+                rows = []
+                error = str(exc)
+
+        month_name = MONTH_NAMES_UA.get(month, str(month)) if month else f"Усі місяці {year} року"
+
+        return render_template(
+            "item_edits.html",
+            rows=rows,
+            error=error,
+            year=year,
+            month=month,
+            month_name=month_name,
+            years=years,
+            months=months,
+            selected_year=year,
+            selected_month=month,
+            month_names=MONTH_NAMES_UA,
+            today_year=today.year,
+            today_month=today.month,
+        )
+
+    @app.get("/item-edits/user/<path:user_email>/<int:year>/<int:month>")
+    @login_required
+    def item_edits_user_detail(user_email: str, year: int, month: int):
+        if month < 0 or month > 12:
+            return redirect(url_for("item_edits"))
+
+        today = date.today()
+        years = list(range(START_YEAR, today.year + 1))
+        months = list(range(1, 13))
+
+        error = None
+        items = []
+        user_name = user_email
+        try:
+            user_name = db.eperson_display_name_by_email(user_email)
+            items = db.item_edit_items_for_user(year, month, user_email)
+        except Exception as exc:
+            app.logger.exception("Item edits user detail failed")
+            error = str(exc)
+
+        month_name = MONTH_NAMES_UA.get(month, str(month)) if month else f"Усі місяці {year} року"
+
+        return render_template(
+            "item_edits_user_detail.html",
+            user_email=user_email,
+            user_name=user_name,
+            items=items,
             ui_base_url=get_config_value("dspace.ui.url", "").rstrip("/"),
             error=error,
             year=year,

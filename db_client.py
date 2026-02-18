@@ -207,6 +207,7 @@ def _submitter_collections_query(include_submitter_filter: bool, exclude_collect
         ") "
         "select e.uuid as submitter_uuid, "
         "       coalesce(trim(en.firstname || ' ' || en.lastname), e.email) as submitter_name, "
+        "       e.email as submitter_email, "
         "       coalesce(ct.title, c.uuid::text) as collection_name, "
         "       count(distinct i.uuid) "
         "from item i "
@@ -219,7 +220,7 @@ def _submitter_collections_query(include_submitter_filter: bool, exclude_collect
         "  and a.accessioned_at >= %s and a.accessioned_at <= %s "
         + exclusion_clause +
         filter_clause +
-        "group by submitter_uuid, submitter_name, collection_name "
+        "group by submitter_uuid, submitter_name, submitter_email, collection_name "
         "order by submitter_name asc, count(distinct i.uuid) desc"
     )
 
@@ -261,12 +262,13 @@ def submitter_totals_by_period(year: int, month: int):
             rows = cur.fetchall()
 
     grouped: Dict[str, Dict[str, Any]] = {}
-    for submitter_uuid, submitter_name, collection, count in rows:
+    for submitter_uuid, submitter_name, submitter_email, collection, count in rows:
         key = str(submitter_uuid)
         if key not in grouped:
             grouped[key] = {
                 "uuid": key,
                 "submitter": submitter_name,
+                "email": submitter_email,
                 "total": 0,
             }
         grouped[key]["total"] += int(count)
@@ -626,3 +628,165 @@ def researcher_profile_publications(year: int, month: int, owner_id: str):
     publications.sort(key=lambda item: (item["date"] is None, item["date"], item["title"].lower()))
     _cache_set(cache_key, publications)
     return publications
+
+
+def item_edit_totals_by_period(year: int, month: int):
+    cache_key = f"item-edits:totals:{year}:{month}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    start_dt, end_dt = _period_range(year, month)
+    sql = (
+        "select user_email, "
+        "       count(*) as edits, "
+        "       count(distinct item_uuid::text) as unique_items, "
+        "       max(event_ts) as last_edit "
+        "from dashboard_item_edit_events "
+        "where event_ts >= %s and event_ts <= %s "
+        "group by user_email "
+        "order by edits desc, unique_items desc, user_email asc"
+    )
+
+    rows = []
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (start_dt, end_dt))
+            rows = cur.fetchall()
+
+    result = [
+        {
+            "user_email": row[0],
+            "edits": int(row[1]),
+            "unique_items": int(row[2]),
+            "last_edit": row[3],
+        }
+        for row in rows
+    ]
+
+    emails = [row["user_email"] for row in result]
+    names_by_email = _eperson_display_names_by_email(emails)
+    for row in result:
+        row["user_name"] = names_by_email.get(row["user_email"], row["user_email"])
+
+    _cache_set(cache_key, result)
+    return result
+
+
+def item_edit_items_for_user(year: int, month: int, user_email: str):
+    cache_key = f"item-edits:user:{user_email}:{year}:{month}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    start_dt, end_dt = _period_range(year, month)
+    title_id = _metadata_field_id("dc", "title", None)
+    if not title_id:
+        raise RuntimeError("Metadata field registry is missing required fields")
+
+    sql = (
+        "with edits as ("
+        "  select item_uuid::text as item_uuid, count(*) as edits, max(event_ts) as last_edit "
+        "  from dashboard_item_edit_events "
+        "  where user_email = %s and event_ts >= %s and event_ts <= %s "
+        "  group by item_uuid"
+        ") "
+        "select e.item_uuid, coalesce(t.title, e.item_uuid), e.edits, e.last_edit "
+        "from edits e "
+        "left join ("
+        "  select mv.dspace_object_id::text as item_uuid, max(mv.text_value) as title "
+        "  from metadatavalue mv "
+        "  where mv.metadata_field_id = %s "
+        "  group by mv.dspace_object_id::text"
+        ") t on t.item_uuid = e.item_uuid "
+        "order by e.edits desc, e.last_edit desc"
+    )
+
+    rows = []
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (user_email, start_dt, end_dt, title_id))
+            rows = cur.fetchall()
+
+    result = [
+        {
+            "item_uuid": row[0],
+            "title": row[1],
+            "edits": int(row[2]),
+            "last_edit": row[3],
+        }
+        for row in rows
+    ]
+    _cache_set(cache_key, result)
+    return result
+
+
+def _eperson_display_names_by_email(emails: List[str]) -> Dict[str, str]:
+    if not emails:
+        return {}
+
+    firstname_id = _metadata_field_id("eperson", "firstname", None)
+    lastname_id = _metadata_field_id("eperson", "lastname", None)
+    if not firstname_id or not lastname_id:
+        return {}
+
+    sql = (
+        "with eperson_names as ("
+        "  select mv.dspace_object_id as eperson_uuid, "
+        "         max(case when mv.metadata_field_id = %s then mv.text_value end) as firstname, "
+        "         max(case when mv.metadata_field_id = %s then mv.text_value end) as lastname "
+        "  from metadatavalue mv "
+        "  where mv.metadata_field_id in (%s, %s) "
+        "  group by mv.dspace_object_id"
+        ") "
+        "select e.email, coalesce(trim(en.firstname || ' ' || en.lastname), e.email) "
+        "from eperson e "
+        "left join eperson_names en on en.eperson_uuid = e.uuid "
+        "where e.email = any(%s)"
+    )
+
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                sql,
+                (
+                    firstname_id,
+                    lastname_id,
+                    firstname_id,
+                    lastname_id,
+                    emails,
+                ),
+            )
+            return {row[0]: row[1] for row in cur.fetchall()}
+
+
+def eperson_display_name_by_email(email: str) -> str:
+    cache_key = f"eperson:name:{email}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    resolved = _eperson_display_names_by_email([email]).get(email, email)
+    _cache_set(cache_key, resolved)
+    return resolved
+
+
+def parser_last_run(parser_name: str = "dspace_item_edits"):
+    cache_key = f"parser:last-run:{parser_name}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "select max(updated_at) from dashboard_log_parser_state where parser_name = %s",
+                    (parser_name,),
+                )
+                row = cur.fetchone()
+                value = row[0] if row and row[0] else None
+                _cache_set(cache_key, value)
+                return value
+    except Exception:
+        return None

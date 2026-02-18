@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block page_title %}Редагування документів — {{ month_name }}{% endblock %}
+
+{% block content %}
+{% if error %}
+<div class="alert alert-danger">
+  <div class="fw-semibold">Помилка</div>
+  <pre class="mb-0 small" style="white-space:pre-wrap">{{ error }}</pre>
+</div>
+{% endif %}
+
+<form class="card card-soft mb-3" id="periodForm" data-base-url="{{ url_for('item_edits_period', year=0, month=0) }}">
+  <div class="card-body d-flex flex-wrap gap-2 align-items-end">
+    <div>
+      <label class="form-label small text-secondary mb-1">Рік</label>
+      <select class="form-select" id="yearSel">
+        {% for y in years %}
+          <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label class="form-label small text-secondary mb-1">Місяць</label>
+      <select class="form-select" id="monthSel">
+        <option value="0" {% if selected_month == 0 %}selected{% endif %}>Усі</option>
+        {% for m in months %}
+          <option value="{{ m }}" {% if m == selected_month %}selected{% endif %}>
+            {{ "%02d"|format(m) }} — {{ month_names[m] }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <button type="submit" class="btn btn-primary ms-auto">Показати</button>
+
+    <a class="btn btn-outline-secondary"
+       href="{{ url_for('item_edits_period', year=today_year, month=today_month) }}">
+      Поточний місяць
+    </a>
+  </div>
+</form>
+
+<script>
+  document.getElementById('periodForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    const y = document.getElementById('yearSel').value;
+    const m = document.getElementById('monthSel').value;
+    const form = document.getElementById('periodForm');
+    const base = form.dataset.baseUrl;
+    window.location.href = base.replace('/0/0', '/' + y + '/' + m);
+  });
+</script>
+
+<div class="text-secondary small mb-2">
+  Підрахунок підтверджених редагувань (`update_item`) з логів DSpace
+  {% if selected_month == 0 %}у {{ year }} році{% else %}за {{ month_name }} {{ year }} року{% endif %}.
+</div>
+
+<div class="card card-soft">
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-list align-middle mb-0">
+        <thead>
+          <tr class="text-secondary small">
+            <th style="width: 520px">
+              <i class="bi bi-person"></i> Користувач
+            </th>
+            <th class="text-end" style="width: 140px">Правок</th>
+            <th class="text-end" style="width: 190px">Унік. документів</th>
+            <th class="text-end" style="width: 210px">Остання правка</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% set ns = namespace(edits=0, unique_items=0) %}
+          {% for row in rows %}
+            {% set ns.edits = ns.edits + row.edits %}
+            {% set ns.unique_items = ns.unique_items + row.unique_items %}
+            <tr>
+              <td class="text-truncate">
+                <a class="sender-link"
+                   href="{{ url_for('item_edits_user_detail', user_email=row.user_email, year=selected_year, month=selected_month) }}">
+                  <span class="sender-row">
+                    <span class="sender-icon">
+                      <i class="bi bi-person"></i>
+                    </span>
+                    <span class="sender-meta">
+                      <span class="sender-name">
+                        {{ row.user_name if row.user_name else row.user_email }}
+                      </span>
+                      <span class="sender-email">{{ row.user_email }}</span>
+                    </span>
+                  </span>
+                </a>
+              </td>
+
+              <td class="fw-semibold text-end">
+                {{ row.edits|fmt }}
+              </td>
+
+              <td class="fw-semibold text-end">
+                {{ row.unique_items|fmt }}
+              </td>
+
+              <td class="text-end">
+                {{ row.last_edit.strftime('%d.%m.%Y %H:%M') if row.last_edit else '—' }}
+              </td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="4" class="text-secondary">
+                Немає даних. Запустіть парсер логів.
+              </td>
+            </tr>
+          {% endfor %}
+
+          {% if rows|length > 0 %}
+          <tr class="table-active border-top border-2">
+            <td class="fw-bold">Усього</td>
+            <td class="fw-bold text-end">{{ ns.edits|fmt }}</td>
+            <td class="fw-bold text-end">{{ ns.unique_items|fmt }}</td>
+            <td></td>
+          </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -49,6 +49,13 @@
         </a>
         </li>
 
+        <li class="nav-item">
+        <a class="nav-link {% if request.endpoint in ['item_edits', 'item_edits_period', 'item_edits_user_detail'] %}active{% endif %}"
+            href="{{ url_for('item_edits') }}">
+          <i class="bi bi-pencil-square"></i> Редагування
+        </a>
+        </li>
+
         {% if profiles_configured %}
         <li class="nav-item">
         <a class="nav-link {% if request.endpoint in ['researcher_profiles', 'researcher_profiles_period'] %}active{% endif %}"

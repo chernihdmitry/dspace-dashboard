@@ -88,3 +88,36 @@ Logs:
 ```bash
 sudo journalctl -u dspace-dashboard -f
 ```
+
+## Item edits from DSpace logs
+
+Dashboard section **"Редагування"** uses events parsed from DSpace logs.
+
+### Parser script
+
+Run manually:
+
+```bash
+cd /opt/dspace-dashboard
+source .venv/bin/activate
+python3 parse_dspace_edit_logs.py --log-glob "/dspace/log/*.log"
+```
+
+Optional environment variable:
+
+```bash
+DSPACE_EDIT_LOG_GLOB=/dspace/log/*.log
+```
+
+### Cron example
+
+Every 10 minutes:
+
+```bash
+*/10 * * * * cd /opt/dspace-dashboard && /opt/dspace-dashboard/.venv/bin/python3 parse_dspace_edit_logs.py --log-glob "/dspace/log/*.log" >> /opt/dspace-dashboard/logs/edit-parser.log 2>&1
+```
+
+Notes:
+- parser reads logs incrementally (tracks inode + offset in DB);
+- only confirmed update events are counted (`ItemServiceImpl ::update_item:item_id=...`);
+- after first parser run, open the dashboard page `/item-edits`.

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block page_title %}Відправник — {{ submitter }}{% endblock %}
+{% block page_title %}Редагування — {{ user_name }}{% endblock %}
 
 {% block content %}
 {% if error %}
@@ -9,7 +9,7 @@
 </div>
 {% endif %}
 
-<form class="card card-soft mb-3" id="periodForm">
+<form class="card card-soft mb-3" id="periodForm" data-base-url="{{ url_for('item_edits_user_detail', user_email=user_email, year=0, month=0) }}">
   <div class="card-body d-flex flex-wrap gap-2 align-items-end">
     <div>
       <label class="form-label small text-secondary mb-1">Рік</label>
@@ -35,8 +35,8 @@
     <button type="submit" class="btn btn-primary ms-auto">Показати</button>
 
     <a class="btn btn-outline-secondary"
-       href="{{ url_for('submitters_month', year=selected_year, month=selected_month) }}">
-      <i class="bi bi-arrow-left"></i> Назад до відправників
+       href="{{ url_for('item_edits_period', year=selected_year, month=selected_month) }}">
+      <i class="bi bi-arrow-left"></i> Назад до списку
     </a>
   </div>
 </form>
@@ -46,13 +46,16 @@
     e.preventDefault();
     const y = document.getElementById('yearSel').value;
     const m = document.getElementById('monthSel').value;
-    const base = {{ url_for('submitter_detail', submitter_id=submitter_id, year=0, month=0)|tojson }};
-    window.location.href = base.replace('/0/0', `/${y}/${m}`);
+    const form = document.getElementById('periodForm');
+    const base = form.dataset.baseUrl;
+    window.location.href = base.replace('/0/0', '/' + y + '/' + m);
   });
 </script>
 
 <div class="text-secondary small mb-2">
-  Колекції, до яких користувач {{ submitter }} відправляв документи {% if selected_month == 0 %}у {{ year }} році{% else %}за {{ month_name }} {{ year }} року{% endif %}.
+  Документи, які редагував користувач {{ user_name }}
+  ({{ user_email }})
+  {% if selected_month == 0 %}у {{ year }} році{% else %}за {{ month_name }} {{ year }} року{% endif %}.
 </div>
 
 <div class="card card-soft">
@@ -61,31 +64,29 @@
       <table class="table table-list align-middle mb-0">
         <thead>
           <tr class="text-secondary small">
-            <th><i class="bi bi-collection"></i> Колекція</th>
-            <th class="text-end" style="width:160px">Документів</th>
+            <th><i class="bi bi-file-earmark-text"></i> Документ</th>
+            <th class="text-end" style="width: 120px">Правок</th>
+            <th class="text-end" style="width: 200px">Остання правка</th>
           </tr>
         </thead>
         <tbody>
-          {% set ns = namespace(total=0) %}
-          {% for row in collections %}
-          {% set ns.total = ns.total + row.count %}
+          {% for row in items %}
           <tr>
-            <td class="text-truncate" style="max-width: 520px">
-              <a href="{{ url_for('submitter_collection_detail', submitter_id=submitter_id, year=selected_year, month=selected_month, collection_id=row.collection_id) }}">
-                <i class="bi bi-collection"></i> {{ row.collection }}
+            <td class="text-truncate" style="max-width: 620px">
+              {% if ui_base_url %}
+              <a href="{{ ui_base_url }}/items/{{ row.item_uuid }}" target="_blank" rel="noopener">
+                <i class="bi bi-file-earmark-text"></i> {{ row.title }}
               </a>
+              {% else %}
+              <i class="bi bi-file-earmark-text"></i> {{ row.title }}
+              {% endif %}
             </td>
-            <td class="fw-semibold text-end">{{ row.count|fmt }}</td>
+            <td class="fw-semibold text-end">{{ row.edits|fmt }}</td>
+            <td class="text-end">{{ row.last_edit.strftime('%d.%m.%Y %H:%M') if row.last_edit else '—' }}</td>
           </tr>
           {% else %}
-          <tr><td colspan="2" class="text-secondary">Немає даних</td></tr>
+          <tr><td colspan="3" class="text-secondary">Немає даних</td></tr>
           {% endfor %}
-          {% if collections|length > 0 %}
-          <tr class="table-active border-top border-2">
-            <td class="fw-bold">Усього</td>
-            <td class="fw-bold text-end">{{ ns.total|fmt }}</td>
-          </tr>
-          {% endif %}
         </tbody>
       </table>
     </div>

@@ -29,12 +29,25 @@ echo "      Email: $EMAIL"
 echo ""
 
 # Пробуем разные варианты базового URL
-# НОВЫЙ ПОРЯДОК: сначала /server/api как приоритет для новых версий DSpace
-API_CANDIDATES=(
-    "$DSPACE_URL/server/api"
-    "$DSPACE_URL/api"
-    "$DSPACE_URL/rest/api"
-)
+# Логика: если URL уже содержит /api или /server - исходим из этого
+API_CANDIDATES=()
+
+# Нормализуем URL
+DSPACE_URL="${DSPACE_URL%/}"
+
+if [[ "$DSPACE_URL" == *"/server/api" ]]; then
+    # URL уже полный вида https://example.com/server/api
+    API_CANDIDATES=("$DSPACE_URL")
+elif [[ "$DSPACE_URL" == *"/server" ]]; then
+    # URL вида https://example.com/server - добавляем /api
+    API_CANDIDATES=("$DSPACE_URL/api")
+elif [[ "$DSPACE_URL" == *"/api" ]]; then
+    # URL вида https://example.com/api - используем как есть
+    API_CANDIDATES=("$DSPACE_URL")
+else
+    # URL просто домена - пробуем /server/api вариант (новые версии DSpace)
+    API_CANDIDATES=("$DSPACE_URL/server/api")
+fi
 
 API_BASE=""
 LOGIN_RESPONSE=""
@@ -43,16 +56,45 @@ TOKEN=""
 for candidate in "${API_CANDIDATES[@]}"; do
     echo "    Пробуем $candidate..."
     
-    # Сначала пробуем обычный POST
+    # Шаг 1: Получить CSRF token
+    CSRF_RESPONSE=$(curl -s -w "\n%{http_code}" -X GET "$candidate/authn/status" \
+      -H "Accept: application/json" \
+      -c /tmp/cookies.txt 2>/dev/null)
+    
+    CSRF_HTTP_CODE=$(echo "$CSRF_RESPONSE" | tail -n1)
+    CSRF_BODY=$(echo "$CSRF_RESPONSE" | head -n-1)
+    
+    # Извлекаем CSRF token из заголовков (cookies)
+    CSRF_TOKEN=$(grep "DSPACE-XSRF-TOKEN\|DSPACE-XSRF-COOKIE" /tmp/cookies.txt 2>/dev/null | awk '{print $NF}')
+    
+    # Если не нашли в cookies - попробуем в неправильном месте и используем что есть
+    if [ -z "$CSRF_TOKEN" ]; then
+        CSRF_TOKEN=$(echo "$CSRF_BODY" | jq -r '.token // .access_token // empty' 2>/dev/null)
+    fi
+    
+    echo "      CSRF HTTP Code: $CSRF_HTTP_CODE"
+    if [ -n "$CSRF_TOKEN" ]; then
+        echo "      CSRF Token получен: ${CSRF_TOKEN:0:20}..."
+    fi
+    
+    # Шаг 2: Авторизоваться с CSRF token
+    LOGIN_HEADERS="-H 'Content-Type: application/x-www-form-urlencoded' -H 'Accept: application/json'"
+    if [ -n "$CSRF_TOKEN" ]; then
+        LOGIN_HEADERS="$LOGIN_HEADERS -H 'X-XSRF-TOKEN: $CSRF_TOKEN'"
+    fi
+    
     LOGIN_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "$candidate/authn/login" \
       -H "Content-Type: application/x-www-form-urlencoded" \
-      -d "user=$EMAIL&password=$PASSWORD" \
-      -H "Accept: application/json" 2>/dev/null)
+      -H "Accept: application/json" \
+      -H "X-XSRF-TOKEN: $CSRF_TOKEN" \
+      -b /tmp/cookies.txt \
+      -c /tmp/cookies.txt \
+      -d "user=$EMAIL&password=$PASSWORD" 2>/dev/null)
     
     HTTP_CODE=$(echo "$LOGIN_RESPONSE" | tail -n1)
     BODY=$(echo "$LOGIN_RESPONSE" | head -n-1)
     
-    echo "      HTTP Code: $HTTP_CODE"
+    echo "      Login HTTP Code: $HTTP_CODE"
     
     # Проверяем ответ
     if [ "$HTTP_CODE" = "200" ]; then
@@ -66,7 +108,7 @@ for candidate in "${API_CANDIDATES[@]}"; do
     
     # Если не сработало - показываем часть ответа для отладки
     if echo "$BODY" | head -c 200 | grep -q "html\|HTML\|error\|Error"; then
-        echo "      ⚠ Ответ выглядит как HTML ошибка, пробуем дальше..."
+        echo "      ⚠ Ответ выглядит как ошибка, пробуем дальше..."
     fi
 done
 
@@ -98,7 +140,8 @@ echo ""
 
 SPECIAL_GROUPS=$(curl -s -w "\n%{http_code}" "$API_BASE/authn/specialgroups" \
   -H "Authorization: Bearer $TOKEN" \
-  -H "Accept: application/json" 2>/dev/null)
+  -H "Accept: application/json" \
+  -b /tmp/cookies.txt 2>/dev/null)
 
 SPECIAL_GROUPS_CODE=$(echo "$SPECIAL_GROUPS" | tail -n1)
 SPECIAL_GROUPS=$(echo "$SPECIAL_GROUPS" | head -n-1)
@@ -119,7 +162,8 @@ echo ""
 
 STATUS=$(curl -s "$API_BASE/authn/status" \
   -H "Authorization: Bearer $TOKEN" \
-  -H "Accept: application/json" 2>/dev/null)
+  -H "Accept: application/json" \
+  -b /tmp/cookies.txt 2>/dev/null)
 
 echo "$STATUS" | jq . 2>/dev/null || echo "$STATUS"
 echo ""
@@ -135,7 +179,8 @@ if [ -n "$EPERSON_ID" ]; then
     
     EPERSON_GROUPS=$(curl -s "$API_BASE/eperson/epersons/$EPERSON_ID/groups" \
       -H "Authorization: Bearer $TOKEN" \
-      -H "Accept: application/json" 2>/dev/null)
+      -H "Accept: application/json" \
+      -b /tmp/cookies.txt 2>/dev/null)
     
     echo "$EPERSON_GROUPS" | jq . 2>/dev/null || echo "$EPERSON_GROUPS"
     
@@ -153,3 +198,6 @@ echo ""
 echo "==============================================="
 echo "Проверка завершена"
 echo "==============================================="
+
+# Cleanup
+rm -f /tmp/cookies.txt
