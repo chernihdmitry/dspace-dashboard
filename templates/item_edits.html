@@ -63,75 +63,87 @@
 </div>
 
 {% if search_mode == 'doc' %}
-  <table class="table table-list align-middle mb-0">
-    <thead>
-      <tr class="text-secondary small">
-        <th>Назва документа</th>
-        <th>Ім'я користувача</th>
-        <th class="text-end">Email</th>
-        <th class="text-end">Правок</th>
-        <th class="text-end">Остання правка</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in rows %}
-      <tr>
-        <td class="text-truncate">{{ row.title }}</td>
-        <td class="text-truncate">{{ row.user_name }}</td>
-        <td class="text-end">{{ row.user_email }}</td>
-        <td class="fw-semibold text-end">{{ row.edits|fmt }}</td>
-        <td class="text-end">{{ row.last_edit.strftime('%d.%m.%Y %H:%M') if row.last_edit else '—' }}</td>
-      </tr>
-      {% else %}
-      <tr><td colspan="5" class="text-secondary">Немає даних</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+<div class="card card-soft">
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-list align-middle mb-0">
+        <thead>
+          <tr class="text-secondary small">
+            <th>Назва документа</th>
+            <th>Ім'я користувача</th>
+            <th class="text-end">Email</th>
+            <th class="text-end">Правок</th>
+            <th class="text-end">Остання правка</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr>
+            <td class="text-truncate">{{ row.title }}</td>
+            <td class="text-truncate">{{ row.user_name }}</td>
+            <td class="text-end">{{ row.user_email }}</td>
+            <td class="fw-semibold text-end">{{ row.edits|fmt }}</td>
+            <td class="text-end">{{ row.last_edit.strftime('%d.%m.%Y %H:%M') if row.last_edit else '—' }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="text-secondary">Немає даних</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
 {% else %}
-  <table class="table table-list align-middle mb-0">
-    <thead>
-      <tr class="text-secondary small">
-        <th style="width: 320px"><i class="bi bi-person"></i> Користувач</th>
-        <th class="text-end" style="width:120px">Правок</th>
-        <th class="text-end" style="width:120px">Унікальних документів</th>
-        <th class="text-end" style="width:200px">Остання правка</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% set ns = namespace(total=0) %}
-      {% for row in rows %}
-        {% set ns.total = ns.total + row.edits %}
-        <tr>
-          <td class="text-truncate" style="max-width: 320px">
-            <a href="{{ url_for('item_edits_user_detail', user_email=row.user_email, year=selected_year, month=selected_month) }}" class="sender-link">
-              <span class="sender-row">
-                <span class="sender-icon"><i class="bi bi-person"></i></span>
-                <span class="sender-meta" style="display: flex; align-items: center; gap: 8px;">
-                  <span class="sender-name">{{ row.user_name if row.user_name else "—" }}</span>
-                  {% if row.user_email %}
-                    <span class="sender-email text-secondary">({{ row.user_email }})</span>
-                  {% endif %}
-                </span>
-              </span>
-            </a>
-          </td>
-          <td class="fw-semibold text-end">{{ row.edits|fmt }}</td>
-          <td class="fw-semibold text-end">{{ row.unique_items|fmt }}</td>
-          <td class="text-end">{{ row.last_edit.strftime('%d.%m.%Y %H:%M') if row.last_edit else '—' }}</td>
-        </tr>
-      {% else %}
-        <tr><td colspan="4" class="text-secondary">Немає даних</td></tr>
-      {% endfor %}
-      {% if rows|length > 0 %}
-      <tr class="table-active border-top border-2">
-        <td class="fw-bold">Усього</td>
-        <td class="fw-bold text-end">{{ ns.total|fmt }}</td>
-        <td class="fw-bold text-end">{{ rows|map(attribute='unique_items')|sum|fmt }}</td>
-        <td colspan="1"></td>
-      </tr>
-      {% endif %}
-    </tbody>
-  </table>
+<div class="card card-soft">
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-list align-middle mb-0">
+        <thead>
+          <tr class="text-secondary small">
+            <th style="width: 320px"><i class="bi bi-person"></i> Користувач</th>
+            <th class="text-end" style="width:120px">Правок</th>
+            <th class="text-end" style="width:120px">Унікальних документів</th>
+            <th class="text-end" style="width:200px">Остання правка</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% set ns = namespace(total=0) %}
+          {% for row in rows %}
+            {% set ns.total = ns.total + row.edits %}
+            <tr>
+              <td class="text-truncate" style="max-width: 320px">
+                <a href="{{ url_for('item_edits_user_detail', user_email=row.user_email, year=selected_year, month=selected_month) }}" class="sender-link">
+                  <span class="sender-row">
+                    <span class="sender-icon"><i class="bi bi-person"></i></span>
+                    <span class="sender-meta" style="display: flex; align-items: center; gap: 8px;">
+                      <span class="sender-name">{{ row.user_name if row.user_name else "—" }}</span>
+                      {% if row.user_email %}
+                        <span class="sender-email text-secondary">({{ row.user_email }})</span>
+                      {% endif %}
+                    </span>
+                  </span>
+                </a>
+              </td>
+              <td class="fw-semibold text-end">{{ row.edits|fmt }}</td>
+              <td class="fw-semibold text-end">{{ row.unique_items|fmt }}</td>
+              <td class="text-end">{{ row.last_edit.strftime('%d.%m.%Y %H:%M') if row.last_edit else '—' }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="4" class="text-secondary">Немає даних</td></tr>
+          {% endfor %}
+          {% if rows|length > 0 %}
+          <tr class="table-active border-top border-2">
+            <td class="fw-bold">Усього</td>
+            <td class="fw-bold text-end">{{ ns.total|fmt }}</td>
+            <td class="fw-bold text-end">{{ rows|map(attribute='unique_items')|sum|fmt }}</td>
+            <td colspan="1"></td>
+          </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
 {% endif %}
 
 {% endblock %}
