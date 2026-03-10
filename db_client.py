@@ -272,6 +272,7 @@ def _submitter_collections_query(include_submitter_filter: bool, exclude_collect
         "  select mv.dspace_object_id as collection_uuid, "
         "         max(mv.text_value) as title "
         "  from metadatavalue mv "
+        "  join collection col on col.uuid = mv.dspace_object_id "
         "  where mv.metadata_field_id = %s "
         "  group by mv.dspace_object_id"
         "), eperson_names as ("
