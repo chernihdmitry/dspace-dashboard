@@ -21,7 +21,7 @@ from dspace_config import get_config_value
 # Config defaults
 # ----------------------------
 
-DEFAULT_LOG_GLOB = os.getenv("DSPACE_EDIT_LOG_GLOB", "/dspace/log/*.log")
+DEFAULT_LOG_GLOB = os.getenv("DSPACE_EDIT_LOG_GLOB", "/dspace/log/dspace.log")
 DEFAULT_PARSER_NAME = "dspace_item_edits_daemon"
 DEFAULT_POLL_SECONDS = int(os.getenv("DSPACE_EDIT_POLL_SECONDS", "5"))
 DEFAULT_PENDING_SECONDS = int(os.getenv("DSPACE_EDIT_PENDING_SECONDS", "180"))
