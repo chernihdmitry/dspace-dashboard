@@ -713,28 +713,28 @@ def run_daemon(
 
                 conn.commit()
 
-            if (
-                total_pending
-                or total_system
-                or total_skipped_reqctx
-                or finalized
-                or discarded
-                or deleted_system
-                or pruned_reqctx
-            ):
-                logging.info(
-                    "iteration: files=%s lines=%s pending+%s system+%s skipped_reqctx=%s finalized=%s discarded=%s cleanup_system=%s prune_reqctx=%s reqctx_size=%s",
-                    len(files),
-                    total_lines,
-                    total_pending,
-                    total_system,
-                    total_skipped_reqctx,
-                    finalized,
-                    discarded,
-                    deleted_system,
-                    pruned_reqctx,
-                    len(request_context),
-                )
+                if (
+                    total_pending
+                    or total_system
+                    or total_skipped_reqctx
+                    or finalized
+                    or discarded
+                    or deleted_system
+                    or pruned_reqctx
+                ):
+                    logging.info(
+                        "iteration: files=%s lines=%s pending+%s system+%s skipped_reqctx=%s finalized=%s discarded=%s cleanup_system=%s prune_reqctx=%s reqctx_size=%s",
+                        len(files),
+                        total_lines,
+                        total_pending,
+                        total_system,
+                        total_skipped_reqctx,
+                        finalized,
+                        discarded,
+                        deleted_system,
+                        pruned_reqctx,
+                        len(request_context),
+                    )
 
 
             except Exception:
