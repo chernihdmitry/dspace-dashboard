@@ -23,7 +23,7 @@ from dspace_config import get_config_value
 
 DEFAULT_LOG_GLOB = os.getenv("DSPACE_EDIT_LOG_GLOB", "/dspace/log/dspace.log")
 DEFAULT_PARSER_NAME = "dspace_item_edits_daemon"
-DEFAULT_POLL_SECONDS = int(os.getenv("DSPACE_EDIT_POLL_SECONDS", "5"))
+DEFAULT_POLL_SECONDS = int(os.getenv("DSPACE_EDIT_POLL_SECONDS", "15"))
 DEFAULT_PENDING_SECONDS = int(os.getenv("DSPACE_EDIT_PENDING_SECONDS", "180"))
 DEFAULT_DEDUPE_SECONDS = int(os.getenv("DSPACE_EDIT_DEDUPE_SECONDS", "60"))
 DEFAULT_SYSTEM_RETENTION_HOURS = int(os.getenv("DSPACE_SYSTEM_EVENT_RETENTION_HOURS", "48"))
@@ -713,6 +713,15 @@ def run_daemon(
 
                 conn.commit()
 
+            if (
+                total_pending
+                or total_system
+                or total_skipped_reqctx
+                or finalized
+                or discarded
+                or deleted_system
+                or pruned_reqctx
+            ):
                 logging.info(
                     "iteration: files=%s lines=%s pending+%s system+%s skipped_reqctx=%s finalized=%s discarded=%s cleanup_system=%s prune_reqctx=%s reqctx_size=%s",
                     len(files),
@@ -726,6 +735,7 @@ def run_daemon(
                     pruned_reqctx,
                     len(request_context),
                 )
+
 
             except Exception:
                 conn.rollback()
