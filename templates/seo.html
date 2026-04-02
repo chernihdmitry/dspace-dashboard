@@ -175,23 +175,38 @@
         <div class="small text-secondary mb-3">{{ report.scholar.disclaimer }}</div>
 
         <div class="d-flex justify-content-between py-1 border-bottom">
-          <span>robots.txt</span>
+          <span>
+            robots.txt
+            <i class="bi bi-info-circle ms-1 text-muted" style="cursor: help; font-size: .9rem;" data-bs-toggle="tooltip" data-bs-placement="top" title="Перевіряється доступність robots.txt, наявність Sitemap та блокування шляхів /items/, /handle/, .pdf"></i>
+          </span>
           <span class="small">{{ report.robots.status }}</span>
         </div>
         <div class="d-flex justify-content-between py-1 border-bottom">
-          <span>sitemap.xml</span>
+          <span>
+            sitemap.xml
+            <i class="bi bi-info-circle ms-1 text-muted" style="cursor: help; font-size: .9rem;" data-bs-toggle="tooltip" data-bs-placement="top" title="Перевіряється наявність карти сайту, валідність XML та загальна кількість URL"></i>
+          </span>
           <span class="small">{{ report.sitemap.status }} ({{ report.sitemap.url_count|fmt }} URL)</span>
         </div>
         <div class="d-flex justify-content-between py-1 border-bottom">
-          <span>HTML-сторінки</span>
+          <span>
+            HTML-сторінки
+            <i class="bi bi-info-circle ms-1 text-muted" style="cursor: help; font-size: .9rem;" data-bs-toggle="tooltip" data-bs-placement="top" title="Перевіряються citation meta-теги (title, author, date, pdf_url) та наявність SSR-контенту без JavaScript"></i>
+          </span>
           <span class="small">{{ report.html.status }}</span>
         </div>
         <div class="d-flex justify-content-between py-1 border-bottom">
-          <span>PDF-файли</span>
+          <span>
+            PDF-файли
+            <i class="bi bi-info-circle ms-1 text-muted" style="cursor: help; font-size: .9rem;" data-bs-toggle="tooltip" data-bs-placement="top" title="Перевіряється доступність PDF-посилань і базові технічні ознаки файлу (наприклад, аномально малий розмір)"></i>
+          </span>
           <span class="small">{{ report.pdf.status }}</span>
         </div>
         <div class="d-flex justify-content-between py-1">
-          <span>Узгодженість доменів</span>
+          <span>
+            Узгодженість доменів
+            <i class="bi bi-info-circle ms-1 text-muted" style="cursor: help; font-size: .9rem;" data-bs-toggle="tooltip" data-bs-placement="top" title="Порівнюються домени сторінок публікацій і PDF-посилань; різні домени позначаються як Warning"></i>
+          </span>
           <span class="small">{{ report.domain.status }}</span>
         </div>
 
