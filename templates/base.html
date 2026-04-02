@@ -74,6 +74,15 @@
         </li>
         {% endif %}
 
+        {% if seo_enabled %}
+        <li class="nav-item">
+        <a class="nav-link {% if request.endpoint == 'seo_page' %}active{% endif %}"
+          href="{{ url_for('seo_page') }}">
+          <i class="bi bi-search"></i> SEO
+        </a>
+        </li>
+        {% endif %}
+
         {% if current_user.is_authenticated %}
         <li class="nav-item">
             <a class="nav-link" href="{{ url_for('logout') }}" title="Вийти">

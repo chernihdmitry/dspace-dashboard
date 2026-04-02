@@ -20,6 +20,7 @@ import solr_client as solr
 import matomo_client as matomo
 import auth_dspace
 import db_client as db
+from seo_checker import run_seo_check
 from dspace_config import get_config_value
 
 APP_TITLE = os.getenv("APP_TITLE", "DSpace Live Dashboard")
@@ -43,6 +44,11 @@ def read_version() -> str:
         return "dev"
 
 APP_VERSION = os.getenv("APP_VERSION") or read_version()
+
+
+def _seo_enabled() -> bool:
+    value = os.getenv("GOOGLE_SEARCH_CONSOLE_ENABLED", "false").strip().lower()
+    return value in {"1", "true", "yes", "on"}
 
 
 # ---- User Model for Flask-Login ----
@@ -128,6 +134,32 @@ def create_app():
     app.config["CACHE_TYPE"] = os.getenv("CACHE_TYPE", "SimpleCache")
     app.config["CACHE_DEFAULT_TIMEOUT"] = CACHE_TTL_SECONDS
     cache = Cache(app)
+    seo_state = {
+        "report": None,
+        "error": None,
+        "date_param": "last30",
+    }
+
+    def _normalize_date_param(raw_value: str) -> str:
+        value = (raw_value or "last30").strip()
+        valid_dates = {"yesterday", "today", "last7", "last30", "last365"}
+        if value in valid_dates:
+            return value
+        if "," in value and len(value.split(",")) == 2:
+            return value
+        return "last30"
+
+    def _run_seo_check_safe(date_param: str = "last30"):
+        try:
+            report = run_seo_check(date_param=date_param)
+            seo_state["report"] = report
+            seo_state["error"] = None
+            seo_state["date_param"] = date_param
+            return report
+        except Exception as exc:
+            app.logger.exception("SEO check failed")
+            seo_state["error"] = str(exc)
+            return None
 
     # ---- Jinja filters ----
     @app.template_filter("fmt")
@@ -156,6 +188,7 @@ def create_app():
             "APP_VERSION": APP_VERSION,
             "today_str": today_or_parser,
             "matomo_configured": matomo.is_configured(),
+            "seo_enabled": _seo_enabled(),
             "profiles_configured": bool(
                 get_config_value("researcher-profile.collection.uuid", "").strip()
             ),
@@ -952,6 +985,54 @@ def create_app():
                 "success": False,
                 "error": str(e)
             }), 500
+
+    @app.get("/seo")
+    @login_required
+    def seo_page():
+        if not _seo_enabled():
+            return redirect(url_for("info"))
+
+        date_param = _normalize_date_param(request.args.get("date", seo_state.get("date_param", "last30")))
+        report = seo_state.get("report")
+        error = seo_state.get("error")
+
+        if request.args.get("refresh") == "1" or report is None or seo_state.get("date_param") != date_param:
+            report = _run_seo_check_safe(date_param=date_param)
+            error = seo_state.get("error")
+
+        return render_template(
+            "seo.html",
+            report=report,
+            error=error,
+            selected_date_param=date_param,
+        )
+
+    @app.post("/api/seo/check")
+    @login_required
+    def seo_check_api():
+        if not _seo_enabled():
+            return jsonify({"success": False, "error": "SEO module is disabled"}), 403
+
+        payload = request.get_json(silent=True) or {}
+        date_param = _normalize_date_param(
+            payload.get("date") or request.args.get("date", seo_state.get("date_param", "last30"))
+        )
+        report = _run_seo_check_safe(date_param=date_param)
+        if not report:
+            return jsonify(
+                {
+                    "success": False,
+                    "error": seo_state.get("error") or "SEO check failed",
+                }
+            ), 500
+
+        return jsonify(
+            {
+                "success": True,
+                "report": report,
+                "date": date_param,
+            }
+        )
 
     return app
 

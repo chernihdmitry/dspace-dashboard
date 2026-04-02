@@ -156,3 +156,28 @@ Notes:
 - daemon keeps parser state in PostgreSQL (inode + offset) and resumes automatically;
 - only confirmed update events are counted (`ItemServiceImpl ::update_item:item_id=...`);
 - after the first daemon run, refresh the dashboard page `/item-edits` to populate charts.
+
+## SEO module (Google indexing and Scholar readiness)
+
+Dashboard section **"SEO"** runs technical checks and (optionally) reads indexing data from Google Search Console.
+
+Recommended: add to `/etc/default/dspace-dashboard` (environment):
+
+```bash
+GOOGLE_SEARCH_CONSOLE_ENABLED=true
+GOOGLE_SEARCH_CONSOLE_CLIENT_ID="..."
+GOOGLE_SEARCH_CONSOLE_CLIENT_SECRET="..."
+GOOGLE_SEARCH_CONSOLE_REFRESH_TOKEN="..."
+```
+
+Search Console property URL is taken automatically from DSpace `local.cfg`:
+- `dspace.ui.url` (preferred)
+- `dspace.server.url` (fallback)
+
+Notes:
+- Search Console integration works with one administrator Google account and stored `refresh_token`.
+- No user OAuth flow is used in dashboard UI.
+- If Search Console is disabled or credentials are missing, SEO tab still runs robots/sitemap/HTML/PDF checks.
+- Search Console API does not expose the same total `Indexed / Not indexed` numbers shown in the Search Console Page Indexing UI. The dashboard can reliably show sitemap data and Search Analytics metrics, but total indexing counts from the UI are not available via the public API.
+
+Performance tuning (optional):

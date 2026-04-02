@@ -1,0 +1,314 @@
+{% extends "base.html" %}
+
+{% block page_title %}SEO та індексація{% endblock %}
+
+{% block header_actions %}
+<div class="d-flex gap-2 align-items-center flex-wrap">
+  <select id="seoPeriodSelector" class="form-select form-select-sm" style="width: auto;">
+    <option value="yesterday" {% if selected_date_param == 'yesterday' %}selected{% endif %}>Вчора</option>
+    <option value="last7" {% if selected_date_param == 'last7' %}selected{% endif %}>Останні 7 днів</option>
+    <option value="last30" {% if selected_date_param == 'last30' %}selected{% endif %}>Останні 30 днів</option>
+    <option value="last365" {% if selected_date_param == 'last365' %}selected{% endif %}>Останні 365 днів</option>
+    <option value="custom" {% if selected_date_param and ',' in selected_date_param %}selected{% endif %}>Довільний період</option>
+  </select>
+
+  <div id="seoCustomRangeInputs" class="d-none gap-2 align-items-center">
+    <input type="date" id="seoDateFrom" class="form-control form-control-sm" style="width: 150px;">
+    <span class="text-secondary">—</span>
+    <input type="date" id="seoDateTo" class="form-control form-control-sm" style="width: 150px;">
+  </div>
+
+  <button id="seoRefreshBtn" class="btn btn-primary btn-sm">
+    <i class="bi bi-arrow-clockwise"></i> Перевірити зараз
+  </button>
+</div>
+{% endblock %}
+
+{% block content %}
+{% if error %}
+<div class="alert alert-danger" role="alert">
+  <strong>Помилка SEO перевірки:</strong> {{ error }}
+</div>
+{% endif %}
+
+{% if report %}
+{% set perf = report.google.search_analytics %}
+<div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-xl-4 g-3 mb-3">
+  <div class="col">
+    <div class="card card-soft h-100">
+      <div class="card-body">
+        <div class="text-secondary small mb-1">
+          Кліки
+          <i class="bi bi-info-circle ms-1 text-muted" style="cursor: help; font-size: .9rem;" data-bs-toggle="tooltip" data-bs-placement="top" title="Кількість кліків із результатів пошуку Google за обраний період"></i>
+        </div>
+        <div class="fs-3 fw-bold">{{ perf.clicks|round|int|fmt if perf else '—' }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="card card-soft h-100">
+      <div class="card-body">
+        <div class="text-secondary small mb-1">
+          Покази
+          <i class="bi bi-info-circle ms-1 text-muted" style="cursor: help; font-size: .9rem;" data-bs-toggle="tooltip" data-bs-placement="top" title="Скільки разів сторінки репозитарію були показані в Google"></i>
+        </div>
+        <div class="fs-3 fw-bold">{{ perf.impressions|round|int|fmt if perf else '—' }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="card card-soft h-100">
+      <div class="card-body">
+        <div class="text-secondary small mb-1">
+          CTR
+          <i class="bi bi-info-circle ms-1 text-muted" style="cursor: help; font-size: .9rem;" data-bs-toggle="tooltip" data-bs-placement="top" title="Click-through rate: частка показів, що завершилися кліком"></i>
+        </div>
+        <div class="fs-3 fw-bold">{{ ((perf.ctr * 100)|round(2)) ~ '%' if perf else '—' }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="card card-soft h-100">
+      <div class="card-body">
+        <div class="text-secondary small mb-1">
+          Середня позиція
+          <i class="bi bi-info-circle ms-1 text-muted" style="cursor: help; font-size: .9rem;" data-bs-toggle="tooltip" data-bs-placement="top" title="Середня позиція сторінок у результатах пошуку Google (менше = краще)"></i>
+        </div>
+        <div class="fs-3 fw-bold">{{ perf.position|round(2) if perf else '—' }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-4">
+    <div class="card card-soft h-100">
+      <div class="card-body">
+        <div class="text-secondary small">Загальний стан SEO</div>
+        {% set cls = 'seo-status-good' if report.status == 'Good' else ('seo-status-warn' if report.status == 'Needs attention' else 'seo-status-error') %}
+        <div class="mt-2">
+          <span class="badge {{ cls }}">{{ report.status }}</span>
+        </div>
+        <div class="small text-secondary mt-2">Остання перевірка: {{ report.checked_at }}</div>
+        <div class="small text-secondary">Тривалість: {{ report.duration_seconds }} с</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card card-soft h-100">
+      <div class="card-body">
+        <div class="text-secondary small">Покриття sitemap</div>
+        <div class="fs-4 fw-bold">{{ report.google.submitted|fmt }}</div>
+        <div class="small text-secondary">Документів у sitemap</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card card-soft h-100">
+      <div class="card-body">
+        <div class="text-secondary small">Google Scholar</div>
+        <div class="fs-4 fw-bold">~{{ report.scholar.estimate|fmt }}</div>
+        <div class="small">Готовність: {{ report.scholar.readiness }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="card card-soft h-100">
+      <div class="card-header bg-white"><strong>Google Search Console</strong></div>
+      <div class="card-body">
+        <div class="small text-secondary mb-2">Property: {{ report.google.site_url or 'n/a' }}</div>
+        {% if perf %}
+        <div class="small text-secondary mb-2">Період: {{ perf.start_date }} - {{ perf.end_date }}</div>
+        {% endif %}
+        {% if report.google.note %}
+        <div class="alert alert-secondary py-2 small">{{ report.google.note }}</div>
+        {% endif %}
+        {% if not report.google.enabled %}
+        <div class="alert alert-secondary py-2 mb-0">google_search_console.enabled=false</div>
+        {% elif not report.google.configured %}
+        <div class="alert alert-warning py-2 mb-0">Неповні облікові дані Search Console.</div>
+        {% endif %}
+
+        <h6 class="mt-3">Топ-сторінки (Search Analytics)</h6>
+        <div class="table-responsive">
+          <table class="table table-list align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Сторінка</th>
+                <th class="text-end">Кліки</th>
+                <th class="text-end">Покази</th>
+                <th class="text-end">CTR</th>
+                <th class="text-end">Позиція</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in report.google.top_pages %}
+              <tr>
+                <td class="small text-break">{{ row.page }}</td>
+                <td class="text-end">{{ row.clicks|round|int|fmt }}</td>
+                <td class="text-end">{{ row.impressions|round|int|fmt }}</td>
+                <td class="text-end">{{ (row.ctr * 100)|round(2) }}%</td>
+                <td class="text-end">{{ row.position|round(2) }}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="5" class="text-secondary">Немає даних Search Analytics.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="card card-soft h-100">
+      <div class="card-header bg-white"><strong>Технічні перевірки</strong></div>
+      <div class="card-body">
+        <div class="mb-2"><strong>Готовність Scholar:</strong> {{ report.scholar.readiness }}</div>
+        <div class="small text-secondary mb-3">{{ report.scholar.disclaimer }}</div>
+
+        <div class="d-flex justify-content-between py-1 border-bottom">
+          <span>robots.txt</span>
+          <span class="small">{{ report.robots.status }}</span>
+        </div>
+        <div class="d-flex justify-content-between py-1 border-bottom">
+          <span>sitemap.xml</span>
+          <span class="small">{{ report.sitemap.status }} ({{ report.sitemap.url_count|fmt }} URL)</span>
+        </div>
+        <div class="d-flex justify-content-between py-1 border-bottom">
+          <span>HTML-сторінки</span>
+          <span class="small">{{ report.html.status }}</span>
+        </div>
+        <div class="d-flex justify-content-between py-1 border-bottom">
+          <span>PDF-файли</span>
+          <span class="small">{{ report.pdf.status }}</span>
+        </div>
+        <div class="d-flex justify-content-between py-1">
+          <span>Узгодженість доменів</span>
+          <span class="small">{{ report.domain.status }}</span>
+        </div>
+
+        <h6 class="mt-3">Sitemaps у Google</h6>
+        <div class="table-responsive">
+          <table class="table table-list align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Sitemap</th>
+                <th>Стан</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for sm in report.google.sitemaps %}
+              <tr>
+                <td class="small text-break">{{ sm.path }}</td>
+                <td>{{ sm.isPending|default(false) and 'Очікує' or 'Оброблено' }}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="2" class="text-secondary">Немає даних sitemap.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card card-soft mt-3">
+  <div class="card-header bg-white"><strong>Проблеми</strong></div>
+  <div class="card-body">
+    {% if report.issues %}
+      <ul class="mb-0">
+        {% for issue in report.issues %}
+          {% set color = 'text-danger' if issue.severity == 'error' else ('text-warning' if issue.severity == 'warning' else 'text-secondary') %}
+          <li class="{{ color }} mb-1">
+            <strong>[{{ issue.component }}]</strong> {{ issue.message }}
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div class="text-success">Проблем не виявлено.</div>
+    {% endif %}
+  </div>
+</div>
+{% else %}
+<div class="alert alert-secondary" role="alert">
+  SEO-звіт ще не створено. Натисніть «Перевірити зараз».
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const refreshBtn = document.getElementById('seoRefreshBtn');
+const periodSelector = document.getElementById('seoPeriodSelector');
+const customRangeWrap = document.getElementById('seoCustomRangeInputs');
+const dateFrom = document.getElementById('seoDateFrom');
+const dateTo = document.getElementById('seoDateTo');
+
+function toggleCustomRange() {
+  if (!periodSelector || !customRangeWrap) return;
+  const isCustom = periodSelector.value === 'custom';
+  customRangeWrap.classList.toggle('d-none', !isCustom);
+  customRangeWrap.classList.toggle('d-flex', isCustom);
+}
+
+function currentDateParam() {
+  if (!periodSelector) return 'last30';
+  if (periodSelector.value !== 'custom') return periodSelector.value;
+  if (!dateFrom?.value || !dateTo?.value) {
+    throw new Error('Оберіть дати для довільного періоду');
+  }
+  return `${dateFrom.value},${dateTo.value}`;
+}
+
+const selectedDateParam = "{{ selected_date_param|e }}";
+if (selectedDateParam && selectedDateParam.includes(',') && dateFrom && dateTo) {
+  const [fromValue, toValue] = selectedDateParam.split(',');
+  dateFrom.value = fromValue;
+  dateTo.value = toValue;
+}
+toggleCustomRange();
+
+if (periodSelector) {
+  periodSelector.addEventListener('change', toggleCustomRange);
+}
+
+if (refreshBtn) {
+  refreshBtn.addEventListener('click', async () => {
+    const originalHtml = refreshBtn.innerHTML;
+    refreshBtn.disabled = true;
+    refreshBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Оновлення...';
+    try {
+      const date = currentDateParam();
+      const response = await fetch('{{ url_for("seo_check_api") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date })
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.error || 'Помилка SEO перевірки');
+      }
+      const params = new URLSearchParams({ refresh: '1', date });
+      window.location.href = `{{ url_for("seo_page") }}?${params.toString()}`;
+    } catch (error) {
+      alert(error.message || 'Помилка SEO перевірки');
+      refreshBtn.disabled = false;
+      refreshBtn.innerHTML = originalHtml;
+    }
+  });
+}
+
+document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach((el) => {
+  new bootstrap.Tooltip(el);
+});
+</script>
+{% endblock %}

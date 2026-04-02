@@ -205,3 +205,18 @@ body{ background: var(--background); color: var(--text-main); }
 .orcid-link:hover {
   color: var(--primary) !important;
 }
+
+.seo-status-good {
+  background: #198754;
+  color: #fff;
+}
+
+.seo-status-warn {
+  background: #ffc107;
+  color: #212529;
+}
+
+.seo-status-error {
+  background: #dc3545;
+  color: #fff;
+}
