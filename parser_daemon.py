@@ -715,22 +715,24 @@ def run_daemon(
 
                 if (
                     total_pending
-                    or total_system
                     or finalized
                     or discarded
                     or deleted_system
                 ):
                     logging.info(
-                        "iteration: files=%s lines=%s pending+%s system+%s skipped_reqctx=%s finalized=%s discarded=%s cleanup_system=%s prune_reqctx=%s reqctx_size=%s",
-                        len(files),
-                        total_lines,
+                        "iteration: pending+%s finalized=%s discarded=%s cleanup_system=%s",
                         total_pending,
-                        total_system,
-                        total_skipped_reqctx,
                         finalized,
                         discarded,
                         deleted_system,
-                        pruned_reqctx,
+                    )
+                elif total_system:
+                    logging.debug(
+                        "iteration system-only: files=%s lines=%s system+%s skipped_reqctx=%s reqctx_size=%s",
+                        len(files),
+                        total_lines,
+                        total_system,
+                        total_skipped_reqctx,
                         len(request_context),
                     )
                 elif total_skipped_reqctx:
