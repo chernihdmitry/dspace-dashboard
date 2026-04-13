@@ -716,7 +716,6 @@ def run_daemon(
                 if (
                     total_pending
                     or total_system
-                    or total_skipped_reqctx
                     or finalized
                     or discarded
                     or deleted_system
@@ -732,6 +731,14 @@ def run_daemon(
                         discarded,
                         deleted_system,
                         pruned_reqctx,
+                        len(request_context),
+                    )
+                elif total_skipped_reqctx:
+                    logging.debug(
+                        "iteration skipped by request context: files=%s lines=%s skipped_reqctx=%s reqctx_size=%s",
+                        len(files),
+                        total_lines,
+                        total_skipped_reqctx,
                         len(request_context),
                     )
                 elif pruned_reqctx:
