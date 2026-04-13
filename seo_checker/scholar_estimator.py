@@ -11,10 +11,13 @@ SCHOLAR_SEARCH_URL = "https://scholar.google.com/scholar"
 def _parse_scholar_count(html: str) -> int:
     # Google Scholar renders result totals in different localized formats.
     patterns = [
+        r"About\s+([\d\s,\.\u00a0\u202f]+)\s+result(?:s)?",
         r"About\s+([\d\s,\.\u00a0\u202f]+)\s+results",
         r"Results\s*:?\s*about\s*([\d\s,\.\u00a0\u202f]+)",
         r"Результатов\s*:?\s*примерно\s*([\d\s,\.\u00a0\u202f]+)",
+        r"Результатов\s*:?\s*([\d\s,\.\u00a0\u202f]+)",
         r"Приблизна\s+кількість\s+результатів\s*:?\s*([\d\s,\.\u00a0\u202f]+)",
+        r"Результати\s*:?\s*([\d\s,\.\u00a0\u202f]+)",
         r"Примерно\s+([\d\s,\.\u00a0\u202f]+)\s+результ",
     ]
 
@@ -43,7 +46,7 @@ def estimate_scholar_presence(site_url: str, timeout: float = 10.0) -> Dict[str,
     try:
         response = requests.get(
             SCHOLAR_SEARCH_URL,
-            params={"q": query, "hl": "uk"},
+            params={"q": query, "hl": "uk", "as_sdt": "0,5", "btnG": ""},
             headers=headers,
             timeout=timeout,
         )
