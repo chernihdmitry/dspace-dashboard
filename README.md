@@ -13,8 +13,8 @@ Short guide to run the app, configure environment, and install a systemd unit.
 
 ```bash
 cd /opt/dspace-dashboard
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 ```
 
@@ -100,7 +100,7 @@ Use the long-running daemon for near-real-time updates:
 
 ```bash
 cd /opt/dspace-dashboard
-source .venv/bin/activate
+source venv/bin/activate
 python3 parser_daemon.py --log-glob "/dspace/log/dspace*.log" --log-level INFO
 ```
 
@@ -121,7 +121,7 @@ Set these in `/etc/default/dspace-dashboard` (used by both the dashboard and par
 Create a companion unit that runs alongside the web app:
 
 ```bash
-sudo tee /etc/systemd/system/dspace-dashboard-parser.service >/dev/null <<'EOF'
+sudo tee /etc/systemd/system/dspace-log-parser.service >/dev/null <<'EOF'
 [Unit]
 Description=DSpace Dashboard Item Edit Parser
 After=network-online.target postgresql.service
@@ -133,7 +133,7 @@ User=dspace
 Group=dspace
 WorkingDirectory=/opt/dspace-dashboard
 EnvironmentFile=/etc/default/dspace-dashboard
-ExecStart=/opt/dspace-dashboard/.venv/bin/python3 parser_daemon.py \
+ExecStart=/opt/dspace-dashboard/venv/bin/python3 parser_daemon.py \
   --log-glob "/dspace/log/dspace*.log"
 Restart=always
 RestartSec=5
@@ -147,10 +147,10 @@ Enable and start the daemon (after deploying code and migrations):
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now dspace-dashboard-parser
+sudo systemctl enable --now dspace-log-parser
 ```
 
-Follow logs via `sudo journalctl -u dspace-dashboard-parser -f`.
+Follow logs via `sudo journalctl -u dspace-log-parser -f`.
 
 Notes:
 - daemon keeps parser state in PostgreSQL (inode + offset) and resumes automatically;

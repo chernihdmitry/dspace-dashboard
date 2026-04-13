@@ -720,7 +720,6 @@ def run_daemon(
                     or finalized
                     or discarded
                     or deleted_system
-                    or pruned_reqctx
                 ):
                     logging.info(
                         "iteration: files=%s lines=%s pending+%s system+%s skipped_reqctx=%s finalized=%s discarded=%s cleanup_system=%s prune_reqctx=%s reqctx_size=%s",
@@ -732,6 +731,12 @@ def run_daemon(
                         finalized,
                         discarded,
                         deleted_system,
+                        pruned_reqctx,
+                        len(request_context),
+                    )
+                elif pruned_reqctx:
+                    logging.debug(
+                        "iteration maintenance: prune_reqctx=%s reqctx_size=%s",
                         pruned_reqctx,
                         len(request_context),
                     )
