@@ -214,6 +214,28 @@ def _metadata_field_id(schema: str, element: str, qualifier: Optional[str]) -> O
     return None
 
 
+def _metadata_field_ids(schema: str, element: str) -> List[int]:
+    cache_key = f"all:{schema}:{element}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return list(cached)
+
+    sql = (
+        "select mfr.metadata_field_id "
+        "from metadatafieldregistry mfr "
+        "join metadataschemaregistry msr on mfr.metadata_schema_id = msr.metadata_schema_id "
+        "where msr.short_id = %s and mfr.element = %s"
+    )
+
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (schema, element))
+            ids = [int(row[0]) for row in cur.fetchall()]
+
+    _cache_set(cache_key, ids)
+    return ids
+
+
 def _orcid_field_id() -> Optional[int]:
     raw = os.getenv("ORCID_FIELD_ID", "")
     if not raw:
@@ -230,23 +252,29 @@ def repo_type_totals() -> Dict[str, int]:
     if cached is not None:
         return cached
 
-    type_field_id = _metadata_field_id("dc", "type", None)
-    if not type_field_id:
-        raise RuntimeError("Metadata field registry is missing dc.type")
+    type_field_ids = _metadata_field_ids("dc", "type")
+    if not type_field_ids:
+        raise RuntimeError("Metadata field registry is missing dc.type*")
 
     sql = (
-        "select trim(mv.text_value) as dc_type, count(distinct i.uuid) "
-        "from item i "
-        "join metadatavalue mv on mv.dspace_object_id = i.uuid and mv.metadata_field_id = %s "
-        "where i.in_archive = true and i.withdrawn = false and i.discoverable = true "
-        "  and coalesce(trim(mv.text_value), '') <> '' "
-        "group by trim(mv.text_value)"
+        "with type_values as ("
+        "  select distinct i.uuid::text as item_uuid, "
+        "         trim(coalesce(nullif(mv.text_value, ''), nullif(mv.authority, ''))) as dc_type "
+        "  from item i "
+        "  join metadatavalue mv on mv.dspace_object_id = i.uuid "
+        "   and mv.metadata_field_id = any(%s) "
+        "  where i.in_archive = true and i.withdrawn = false and coalesce(i.discoverable, true) = true "
+        "    and coalesce(trim(mv.text_value), trim(mv.authority), '') <> ''"
+        ") "
+        "select dc_type, count(*) "
+        "from type_values "
+        "group by dc_type"
     )
 
     totals: Dict[str, int] = {}
     with _connect() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql, (type_field_id,))
+            cur.execute(sql, (type_field_ids,))
             for raw_value, count in cur.fetchall():
                 key = str(raw_value or "").strip()
                 if not key:
