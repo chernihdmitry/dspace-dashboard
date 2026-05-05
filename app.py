@@ -2,7 +2,7 @@ import os
 import logging
 from logging.handlers import RotatingFileHandler
 from datetime import date
-from flask import Flask, render_template, redirect, url_for, jsonify, request, flash, session
+from flask import Flask, render_template, redirect, url_for, jsonify, request, flash, session, Response
 from flask_caching import Cache
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from pathlib import Path
@@ -32,6 +32,7 @@ START_YEAR = int(os.getenv("START_YEAR", "2025"))
 START_MONTH = int(os.getenv("START_MONTH", "1"))
 
 CACHE_TTL_SECONDS = int(os.getenv("CACHE_TTL_SECONDS", "300"))
+THEME_OVERRIDES_PATH = os.getenv("THEME_OVERRIDES_PATH", "/etc/dspace-dashboard/theme-overrides.css")
 
 MONTH_NAMES_UA = {
     1: "січень", 2: "лютий", 3: "березень", 4: "квітень",
@@ -211,6 +212,7 @@ def create_app():
             "profiles_configured": bool(
                 get_config_value("researcher-profile.collection.uuid", "").strip()
             ),
+            "theme_overrides_enabled": os.path.exists(THEME_OVERRIDES_PATH),
         }
 
     # ----------------------------
@@ -964,6 +966,19 @@ def create_app():
     @app.get("/health")
     def health():
         return {"status": "ok"}
+
+    @app.get("/theme-overrides.css")
+    def theme_overrides_css():
+        if not os.path.exists(THEME_OVERRIDES_PATH):
+            return Response(status=204)
+
+        try:
+            css = Path(THEME_OVERRIDES_PATH).read_text(encoding="utf-8")
+        except Exception:
+            app.logger.exception("Failed to read theme overrides CSS")
+            return Response(status=500)
+
+        return Response(css, mimetype="text/css")
 
     # ----------------------------
     # Matomo Analytics
