@@ -19,6 +19,31 @@ SOLR_TIMEOUT = float(os.getenv("SOLR_TIMEOUT", "8"))
 SOLR_SEARCH_URL = f"{SOLR_URL}/search/select"
 SOLR_STATS_URL  = f"{SOLR_URL}/statistics/select"
 
+TYPE_ALIASES = {
+    "Animation": ["info:eu-repo/semantics/animation", "animation"],
+    "Article": ["info:eu-repo/semantics/article", "article"],
+    "Book": ["info:eu-repo/semantics/book", "book"],
+    "Book chapter": ["info:eu-repo/semantics/bookPart", "book part", "book chapter"],
+    "Dataset": ["info:eu-repo/semantics/dataset", "dataset"],
+    "Learning Object": ["info:eu-repo/semantics/learningObject", "learning object"],
+    "Image": ["info:eu-repo/semantics/image", "image"],
+    "Image, 3-D": ["info:eu-repo/semantics/image3d", "image, 3-d", "image 3d"],
+    "Map": ["info:eu-repo/semantics/map", "map"],
+    "Musical Score": ["info:eu-repo/semantics/musicalScore", "musical score"],
+    "Plan or blueprint": ["info:eu-repo/semantics/planOrBlueprint", "plan or blueprint"],
+    "Preprint": ["info:eu-repo/semantics/preprint", "preprint"],
+    "Presentation": ["info:eu-repo/semantics/conferenceObject", "presentation"],
+    "Recording, acoustical": ["info:eu-repo/semantics/recordingAcoustical", "recording, acoustical"],
+    "Recording, musical": ["info:eu-repo/semantics/recordingMusical", "recording, musical"],
+    "Recording, oral": ["info:eu-repo/semantics/recordingOral", "recording, oral"],
+    "Software": ["info:eu-repo/semantics/software", "software"],
+    "Technical Report": ["info:eu-repo/semantics/report", "technical report", "report"],
+    "Thesis": ["info:eu-repo/semantics/bachelorThesis", "info:eu-repo/semantics/masterThesis", "info:eu-repo/semantics/doctoralThesis", "thesis"],
+    "Video": ["info:eu-repo/semantics/video", "video"],
+    "Working Paper": ["info:eu-repo/semantics/workingPaper", "working paper"],
+    "Other": ["info:eu-repo/semantics/other", "other"],
+}
+
 def _build_api_base(server_url: str) -> str:
     if not server_url:
         return ""
@@ -103,9 +128,20 @@ def repo_totals():
         "rows": 0,
         "q.op": "AND",
     }
+    withdrawn_docs_query = {
+        "q": "archived:true",
+        "fq": [
+            "withdrawn:true",
+            "-entityType:Person",
+        ],
+        "rows": 0,
+        "q.op": "AND",
+    }
 
     total_docs = _get(SOLR_SEARCH_URL, main_docs_query)["response"]["numFound"]
     person_profiles = _get(SOLR_SEARCH_URL, person_docs_query)["response"]["numFound"]
+    withdrawn_docs = _get(SOLR_SEARCH_URL, withdrawn_docs_query)["response"]["numFound"]
+    total_docs_all = int(total_docs) + int(withdrawn_docs)
 
     def _first_date_for_field(field: str):
         params = {
@@ -177,7 +213,7 @@ def repo_totals():
         "q": "*:*",
         "rows": 0,
         "facet": "true",
-        "facet.field": ["dc.language.iso", "dc.type"],
+        "facet.field": ["dc.language.iso"],
         "facet.limit": 200,
         "facet.mincount": 1,
     }
@@ -191,13 +227,33 @@ def repo_totals():
             out[str(lst[i])] = int(lst[i + 1])
         return out
 
+    type_counts = {}
+    for label, aliases in TYPE_ALIASES.items():
+        ors = " OR ".join([f'dc.type:"{a}"' for a in aliases])
+        params = {
+            "q": "archived:true",
+            "fq": [
+                "discoverable:true",
+                "withdrawn:false",
+                "-entityType:Person",
+                f"({ors})",
+            ],
+            "rows": 0,
+            "q.op": "AND",
+        }
+        count = int(_get(SOLR_SEARCH_URL, params)["response"]["numFound"])
+        if count > 0:
+            type_counts[label] = count
+
     return {
         "total_docs": int(total_docs),
+        "withdrawn_docs": int(withdrawn_docs),
+        "total_docs_all": int(total_docs_all),
         "person_profiles": int(person_profiles),
         "first_date": first_date,
         "last_date": last_date,
         "langs": flat_to_dict(f.get("dc.language.iso")),
-        "types": flat_to_dict(f.get("dc.type")),
+        "types": type_counts,
     }
 
 

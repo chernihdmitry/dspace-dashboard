@@ -7,6 +7,8 @@ from flask_caching import Cache
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from pathlib import Path
 from werkzeug.middleware.proxy_fix import ProxyFix
+from werkzeug.middleware.dispatcher import DispatcherMiddleware
+from werkzeug.exceptions import NotFound as _NotFound
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 
@@ -49,6 +51,21 @@ APP_VERSION = os.getenv("APP_VERSION") or read_version()
 def _seo_enabled() -> bool:
     value = os.getenv("GOOGLE_SEARCH_CONSOLE_ENABLED", "false").strip().lower()
     return value in {"1", "true", "yes", "on"}
+
+
+def _build_types_ui(raw_types: dict, total_docs: int):
+    items = []
+    for key, count in (raw_types or {}).items():
+        try:
+            cnt = int(count)
+        except Exception:
+            continue
+        if cnt > 0:
+            items.append((str(key), cnt))
+
+    items.sort(key=lambda x: (-x[1], x[0].lower()))
+    base = max(1, int(total_docs))
+    return [{"key": key, "count": count, "pct": (count / base) * 100} for key, count in items]
 
 
 # ---- User Model for Flask-Login ----
@@ -138,6 +155,7 @@ def create_app():
         "report": None,
         "error": None,
         "date_param": "last30",
+        "includes_technical": False,
     }
 
     def _normalize_date_param(raw_value: str) -> str:
@@ -149,12 +167,13 @@ def create_app():
             return value
         return "last30"
 
-    def _run_seo_check_safe(date_param: str = "last30"):
+    def _run_seo_check_safe(date_param: str = "last30", include_technical: bool = False):
         try:
-            report = run_seo_check(date_param=date_param)
+            report = run_seo_check(date_param=date_param, include_technical=include_technical)
             seo_state["report"] = report
             seo_state["error"] = None
             seo_state["date_param"] = date_param
+            seo_state["includes_technical"] = bool(include_technical)
             return report
         except Exception as exc:
             app.logger.exception("SEO check failed")
@@ -304,6 +323,14 @@ def create_app():
         # --- Solr totals ---
         data = solr.repo_totals()
 
+        # --- dc.type totals from PostgreSQL (exact values, no stemming) ---
+        try:
+            pg_types = db.repo_type_totals()
+            if pg_types:
+                data["types"] = pg_types
+        except Exception:
+            app.logger.exception("Failed to read dc.type totals from PostgreSQL")
+
         # --- Sparkline stats ---
         new_7d = solr.submitted_last_days(7)
         spark_labels, spark_values = solr.submitted_sparkline(30)
@@ -320,9 +347,8 @@ def create_app():
         langs_all = sorted((data.get("langs", {}) or {}).items(), key=lambda x: x[1], reverse=True)
         langs_ui = [{"key": k, "count": v, "pct": (v / total_docs) * 100} for k, v in langs_all]
 
-        # ---- Types: all values + percent ----
-        types_all = sorted((data.get("types", {}) or {}).items(), key=lambda x: x[1], reverse=True)
-        types_ui = [{"key": k, "count": v, "pct": (v / total_docs) * 100} for k, v in types_all]
+        # ---- Types: canonical labels + percent ----
+        types_ui = _build_types_ui(data.get("types", {}) or {}, total_docs)
 
         # ---- DSpace server info (REST root) ----
         ds_error = None
@@ -632,10 +658,29 @@ def create_app():
                 app.logger.exception("Heatmap data failed")
                 heatmap_data = {"months": [], "submitters": [], "data": []}
                 error = str(e)
+
+        month_totals = []
+        grand_total = 0
+        try:
+            data_matrix = heatmap_data.get("data", []) or []
+            month_count = len(heatmap_data.get("months", []) or [])
+            month_totals = [0] * month_count
+
+            for row in data_matrix:
+                for idx in range(min(len(row), month_count)):
+                    value = int(row[idx] or 0)
+                    month_totals[idx] += value
+                    grand_total += value
+        except Exception:
+            app.logger.exception("Failed to compute heatmap totals")
+            month_totals = []
+            grand_total = 0
         
         return render_template(
             "submitters_heatmap.html",
             heatmap_data=heatmap_data,
+            month_totals=month_totals,
+            grand_total=grand_total,
             error=error,
             year=year,
             years=years,
@@ -996,8 +1041,9 @@ def create_app():
         report = seo_state.get("report")
         error = seo_state.get("error")
 
+        # При открытии страницы выполняем только быстрый отчёт (без техпроверок).
         if request.args.get("refresh") == "1" or report is None or seo_state.get("date_param") != date_param:
-            report = _run_seo_check_safe(date_param=date_param)
+            report = _run_seo_check_safe(date_param=date_param, include_technical=False)
             error = seo_state.get("error")
 
         return render_template(
@@ -1005,6 +1051,7 @@ def create_app():
             report=report,
             error=error,
             selected_date_param=date_param,
+            includes_technical=bool((report or {}).get("includes_technical", False)),
         )
 
     @app.post("/api/seo/check")
@@ -1017,7 +1064,8 @@ def create_app():
         date_param = _normalize_date_param(
             payload.get("date") or request.args.get("date", seo_state.get("date_param", "last30"))
         )
-        report = _run_seo_check_safe(date_param=date_param)
+        include_technical = bool(payload.get("include_technical", True))
+        report = _run_seo_check_safe(date_param=date_param, include_technical=include_technical)
         if not report:
             return jsonify(
                 {
@@ -1031,6 +1079,7 @@ def create_app():
                 "success": True,
                 "report": report,
                 "date": date_param,
+                "includes_technical": include_technical,
             }
         )
 
@@ -1038,3 +1087,9 @@ def create_app():
 
 
 app = create_app()
+
+# Монтируем приложение по префиксу /dspace-dashboard.
+# DispatcherMiddleware стрипает префикс из PATH_INFO перед передачей в Flask,
+# а ProxyFix(x_prefix=1) устанавливает SCRIPT_NAME для корректной генерации URL.
+_mount_prefix = os.getenv("APPLICATION_ROOT", "/dspace-dashboard").rstrip("/")
+app = DispatcherMiddleware(_NotFound(), {_mount_prefix: app})

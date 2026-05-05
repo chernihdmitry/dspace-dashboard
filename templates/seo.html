@@ -19,7 +19,7 @@
   </div>
 
   <button id="seoRefreshBtn" class="btn btn-primary btn-sm">
-    <i class="bi bi-arrow-clockwise"></i> Перевірити зараз
+    <i class="bi bi-arrow-clockwise"></i> Оновити дані Google
   </button>
 </div>
 {% endblock %}
@@ -171,6 +171,15 @@
     <div class="card card-soft h-100">
       <div class="card-header bg-white"><strong>Технічні перевірки</strong></div>
       <div class="card-body">
+        <div class="mb-3 d-flex align-items-center gap-2 flex-wrap">
+          <button id="seoTechnicalCheckBtn" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-play-circle"></i> Запустити технічні перевірки
+          </button>
+          {% if not includes_technical %}
+          <span class="small text-secondary">Щоб оновити цей блок, запустіть перевірку кнопкою.</span>
+          {% endif %}
+        </div>
+
         <div class="mb-2"><strong>Готовність Scholar:</strong> {{ report.scholar.readiness }}</div>
         <div class="small text-secondary mb-3">{{ report.scholar.disclaimer }}</div>
 
@@ -263,10 +272,36 @@
 {% block scripts %}
 <script>
 const refreshBtn = document.getElementById('seoRefreshBtn');
+const technicalBtn = document.getElementById('seoTechnicalCheckBtn');
 const periodSelector = document.getElementById('seoPeriodSelector');
 const customRangeWrap = document.getElementById('seoCustomRangeInputs');
 const dateFrom = document.getElementById('seoDateFrom');
 const dateTo = document.getElementById('seoDateTo');
+
+async function runSeoCheck(includeTechnical, button, pendingText) {
+  if (!button) return;
+  const originalHtml = button.innerHTML;
+  button.disabled = true;
+  button.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> ${pendingText}`;
+  try {
+    const date = currentDateParam();
+    const response = await fetch('{{ url_for("seo_check_api") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date, include_technical: includeTechnical })
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.success) {
+      throw new Error(payload.error || 'Помилка SEO перевірки');
+    }
+    const params = new URLSearchParams({ date });
+    window.location.href = `{{ url_for("seo_page") }}?${params.toString()}`;
+  } catch (error) {
+    alert(error.message || 'Помилка SEO перевірки');
+    button.disabled = false;
+    button.innerHTML = originalHtml;
+  }
+}
 
 function toggleCustomRange() {
   if (!periodSelector || !customRangeWrap) return;
@@ -297,29 +332,11 @@ if (periodSelector) {
 }
 
 if (refreshBtn) {
-  refreshBtn.addEventListener('click', async () => {
-    const originalHtml = refreshBtn.innerHTML;
-    refreshBtn.disabled = true;
-    refreshBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Оновлення...';
-    try {
-      const date = currentDateParam();
-      const response = await fetch('{{ url_for("seo_check_api") }}', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date })
-      });
-      const payload = await response.json();
-      if (!response.ok || !payload.success) {
-        throw new Error(payload.error || 'Помилка SEO перевірки');
-      }
-      const params = new URLSearchParams({ refresh: '1', date });
-      window.location.href = `{{ url_for("seo_page") }}?${params.toString()}`;
-    } catch (error) {
-      alert(error.message || 'Помилка SEO перевірки');
-      refreshBtn.disabled = false;
-      refreshBtn.innerHTML = originalHtml;
-    }
-  });
+  refreshBtn.addEventListener('click', () => runSeoCheck(false, refreshBtn, 'Оновлення...'));
+}
+
+if (technicalBtn) {
+  technicalBtn.addEventListener('click', () => runSeoCheck(true, technicalBtn, 'Запуск...'));
 }
 
 document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach((el) => {

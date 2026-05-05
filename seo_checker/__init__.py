@@ -22,7 +22,7 @@ def _site_url() -> str:
     )
 
 
-def run_seo_check(date_param: str = "last30") -> Dict[str, object]:
+def run_seo_check(date_param: str = "last30", include_technical: bool = True) -> Dict[str, object]:
     started = time.time()
     site_url = _site_url()
     if not site_url:
@@ -30,28 +30,62 @@ def run_seo_check(date_param: str = "last30") -> Dict[str, object]:
 
     timeout = float(os.getenv("SEO_HTTP_TIMEOUT", "10"))
 
-    robots = check_robots(site_url, timeout=timeout)
-    sitemap = check_sitemap(site_url, timeout=timeout)
+    if include_technical:
+        robots = check_robots(site_url, timeout=timeout)
+        sitemap = check_sitemap(site_url, timeout=timeout)
 
-    sample_item_urls = list(sitemap.get("sample_item_urls", []) or [])
-    if not sample_item_urls:
-        sample_item_urls = [site_url]
+        sample_item_urls = list(sitemap.get("sample_item_urls", []) or [])
+        if not sample_item_urls:
+            sample_item_urls = [site_url]
 
-    html = check_html_pages(sample_item_urls, timeout=timeout)
-    pdf_urls = list(html.get("pdf_urls", []) or [])
-    pdf = check_pdf(pdf_urls, timeout=timeout)
-    domain = check_domain_consistency(sample_item_urls, [row.get("url", "") for row in pdf.get("checks", [])])
+        html = check_html_pages(sample_item_urls, timeout=timeout)
+        pdf_urls = list(html.get("pdf_urls", []) or [])
+        pdf = check_pdf(pdf_urls, timeout=timeout)
+        domain = check_domain_consistency(sample_item_urls, [row.get("url", "") for row in pdf.get("checks", [])])
+        has_robots_block = bool(robots.get("blocked_paths"))
+        scholar_state = scholar_readiness(
+            robots_status=str(robots.get("status", "Error")),
+            html_status=str(html.get("status", "Error")),
+            pdf_status=str(pdf.get("status", "Error")),
+            has_robots_block=has_robots_block,
+        )
+    else:
+        sample_item_urls = []
+        robots = {
+            "status": "Not run",
+            "url": "",
+            "http_status": None,
+            "blocked_paths": [],
+            "issues": [],
+        }
+        sitemap = {
+            "status": "Not run",
+            "url": "",
+            "url_count": 0,
+            "sample_item_urls": [],
+            "issues": [],
+        }
+        html = {
+            "status": "Not run",
+            "checks": [],
+            "pdf_urls": [],
+            "issues": [],
+        }
+        pdf = {
+            "status": "Not run",
+            "checks": [],
+            "issues": [],
+        }
+        domain = {
+            "status": "Not run",
+            "item_hosts": [],
+            "pdf_hosts": [],
+            "issues": [],
+        }
+        scholar_state = "Not run"
 
     google = collect_google_index_data(sample_item_urls, date_param=date_param)
     scholar = estimate_scholar_presence(site_url, timeout=timeout)
-
-    has_robots_block = bool(robots.get("blocked_paths"))
-    scholar_state = scholar_readiness(
-        robots_status=str(robots.get("status", "Error")),
-        html_status=str(html.get("status", "Error")),
-        pdf_status=str(pdf.get("status", "Error")),
-        has_robots_block=has_robots_block,
-    )
 
     report = build_report(
         {
@@ -98,4 +132,5 @@ def run_seo_check(date_param: str = "last30") -> Dict[str, object]:
     )
 
     report["duration_seconds"] = round(time.time() - started, 2)
+    report["includes_technical"] = bool(include_technical)
     return report

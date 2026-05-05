@@ -59,6 +59,17 @@ body{ background: var(--background); color: var(--text-main); }
 
 .types-scroll { max-height: 520px; overflow: auto; padding-right: 6px; }
 
+.type-label {
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.2;
+}
+
+.types-scroll .d-flex.justify-content-between.small {
+  align-items: flex-start;
+  gap: 8px;
+}
+
 .navbar .nav-link {
   padding: 6px 14px;
   border-radius: 10px;

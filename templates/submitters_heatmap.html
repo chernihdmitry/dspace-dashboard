@@ -89,6 +89,15 @@
           </tr>
           {% endfor %}
         </tbody>
+        <tfoot>
+          <tr>
+            <th class="text-start sticky-column bg-white">Всього</th>
+            {% for total in month_totals %}
+              <th class="bg-light">{{ total|fmt }}</th>
+            {% endfor %}
+            <th class="bg-light">{{ grand_total|fmt }}</th>
+          </tr>
+        </tfoot>
       </table>
     </div>
 

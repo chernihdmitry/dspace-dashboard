@@ -224,6 +224,39 @@ def _orcid_field_id() -> Optional[int]:
         return None
 
 
+def repo_type_totals() -> Dict[str, int]:
+    cache_key = "repo:type-totals"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    type_field_id = _metadata_field_id("dc", "type", None)
+    if not type_field_id:
+        raise RuntimeError("Metadata field registry is missing dc.type")
+
+    sql = (
+        "select trim(mv.text_value) as dc_type, count(distinct i.uuid) "
+        "from item i "
+        "join metadatavalue mv on mv.dspace_object_id = i.uuid and mv.metadata_field_id = %s "
+        "where i.in_archive = true and i.withdrawn = false and i.discoverable = true "
+        "  and coalesce(trim(mv.text_value), '') <> '' "
+        "group by trim(mv.text_value)"
+    )
+
+    totals: Dict[str, int] = {}
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, (type_field_id,))
+            for raw_value, count in cur.fetchall():
+                key = str(raw_value or "").strip()
+                if not key:
+                    continue
+                totals[key] = int(count)
+
+    _cache_set(cache_key, totals)
+    return totals
+
+
 def _excluded_collection_uuid() -> str:
     return get_config_value("researcher-profile.collection.uuid", "").strip()
 
