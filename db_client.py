@@ -242,18 +242,41 @@ def repo_visibility_totals() -> Dict[str, int]:
     if cached is not None:
         return cached
 
-    sql = (
-        "select "
-        "  count(*) filter (where in_archive = true and withdrawn = false and coalesce(discoverable, true) = true) as visible_docs, "
-        "  count(*) filter (where in_archive = true and withdrawn = false and discoverable = false) as closed_access_docs, "
-        "  count(*) filter (where in_archive = true and withdrawn = true) as withdrawn_docs, "
-        "  count(*) filter (where in_archive = true and withdrawn = false) as total_docs_all "
-        "from item"
-    )
+    person_type_field_id = _metadata_field_id("dspace", "entity", "type")
+
+    if person_type_field_id:
+        sql = (
+            "with person_items as ("
+            "  select distinct mv.dspace_object_id as item_uuid "
+            "  from metadatavalue mv "
+            "  where mv.metadata_field_id = %s "
+            "    and trim(coalesce(mv.text_value, mv.authority)) = 'Person'"
+            ") "
+            "select "
+            "  count(*) filter (where i.in_archive = true and i.withdrawn = false and coalesce(i.discoverable, true) = true and p.item_uuid is null) as visible_docs, "
+            "  count(*) filter (where i.in_archive = true and i.withdrawn = false and i.discoverable = false and p.item_uuid is null) as closed_access_docs, "
+            "  count(*) filter (where i.in_archive = true and i.withdrawn = true and p.item_uuid is null) as withdrawn_docs, "
+            "  count(*) filter (where i.in_archive = true and i.withdrawn = false and p.item_uuid is null) as total_docs_all, "
+            "  count(*) filter (where i.in_archive = true and p.item_uuid is not null) as person_profiles "
+            "from item i "
+            "left join person_items p on p.item_uuid = i.uuid"
+        )
+        params = (person_type_field_id,)
+    else:
+        sql = (
+            "select "
+            "  count(*) filter (where in_archive = true and withdrawn = false and coalesce(discoverable, true) = true) as visible_docs, "
+            "  count(*) filter (where in_archive = true and withdrawn = false and discoverable = false) as closed_access_docs, "
+            "  count(*) filter (where in_archive = true and withdrawn = true) as withdrawn_docs, "
+            "  count(*) filter (where in_archive = true and withdrawn = false) as total_docs_all, "
+            "  0 as person_profiles "
+            "from item"
+        )
+        params = ()
 
     with _connect() as conn:
         with conn.cursor() as cur:
-            cur.execute(sql)
+            cur.execute(sql, params)
             row = cur.fetchone()
 
     result = {
@@ -261,6 +284,7 @@ def repo_visibility_totals() -> Dict[str, int]:
         "closed_access_docs": int(row[1] or 0),
         "withdrawn_docs": int(row[2] or 0),
         "total_docs_all": int(row[3] or 0),
+        "person_profiles": int(row[4] or 0),
     }
     _cache_set(cache_key, result)
     return result

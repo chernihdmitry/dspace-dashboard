@@ -333,6 +333,7 @@ def create_app():
                 data["closed_access_docs"] = int(visibility_totals.get("closed_access_docs", 0))
                 data["withdrawn_docs"] = int(visibility_totals.get("withdrawn_docs", data.get("withdrawn_docs", 0)))
                 data["total_docs_all"] = int(visibility_totals.get("total_docs_all", data.get("total_docs_all", 0)))
+                data["person_profiles"] = int(visibility_totals.get("person_profiles", data.get("person_profiles", 0)))
         except Exception:
             app.logger.exception("Failed to read repo visibility totals from PostgreSQL")
 
