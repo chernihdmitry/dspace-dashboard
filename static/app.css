@@ -55,9 +55,19 @@ body{ background: var(--background); color: var(--text-main); }
   border-radius: 999px;
 }
 
-.langs-scroll { max-height: 520px; overflow: auto; padding-right: 6px; }
+.facet-card-body {
+  display: flex;
+  flex-direction: column;
+}
 
-.types-scroll { max-height: 520px; overflow: auto; padding-right: 6px; }
+.langs-scroll,
+.types-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  overflow: auto;
+  padding-right: 6px;
+}
 
 .type-label {
   white-space: normal;
