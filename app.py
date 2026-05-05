@@ -1088,8 +1088,9 @@ def create_app():
 
 app = create_app()
 
-# Монтируем приложение по префиксу /dspace-dashboard.
-# DispatcherMiddleware стрипает префикс из PATH_INFO перед передачей в Flask,
-# а ProxyFix(x_prefix=1) устанавливает SCRIPT_NAME для корректной генерации URL.
-_mount_prefix = os.getenv("APPLICATION_ROOT", "/dspace-dashboard").rstrip("/")
-app = DispatcherMiddleware(_NotFound(), {_mount_prefix: app})
+# Монтируем приложение по префиксу только если он явно задан через env.
+# Для Apache ProxyPass /dspace-dashboard/ -> backend:/ префикс срезается прокси,
+# поэтому APPLICATION_ROOT должен быть пустым.
+_mount_prefix = (os.getenv("APPLICATION_ROOT", "") or "").strip().rstrip("/")
+if _mount_prefix:
+    app = DispatcherMiddleware(_NotFound(), {_mount_prefix: app})
