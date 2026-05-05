@@ -325,6 +325,17 @@ def create_app():
         # --- Solr totals ---
         data = solr.repo_totals()
 
+        # --- Visibility totals from PostgreSQL for exact item flags ---
+        try:
+            visibility_totals = db.repo_visibility_totals()
+            if visibility_totals:
+                data["total_docs"] = int(visibility_totals.get("visible_docs", data.get("total_docs", 0)))
+                data["closed_access_docs"] = int(visibility_totals.get("closed_access_docs", 0))
+                data["withdrawn_docs"] = int(visibility_totals.get("withdrawn_docs", data.get("withdrawn_docs", 0)))
+                data["total_docs_all"] = int(visibility_totals.get("total_docs_all", data.get("total_docs_all", 0)))
+        except Exception:
+            app.logger.exception("Failed to read repo visibility totals from PostgreSQL")
+
         # --- dc.type totals from PostgreSQL (exact values, no stemming) ---
         try:
             pg_types = db.repo_type_totals()

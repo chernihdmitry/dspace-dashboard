@@ -236,6 +236,36 @@ def _metadata_field_ids(schema: str, element: str) -> List[int]:
     return ids
 
 
+def repo_visibility_totals() -> Dict[str, int]:
+    cache_key = "repo:visibility-totals"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    sql = (
+        "select "
+        "  count(*) filter (where in_archive = true and withdrawn = false and coalesce(discoverable, true) = true) as visible_docs, "
+        "  count(*) filter (where in_archive = true and withdrawn = false and discoverable = false) as closed_access_docs, "
+        "  count(*) filter (where in_archive = true and withdrawn = true) as withdrawn_docs, "
+        "  count(*) filter (where in_archive = true and withdrawn = false) as total_docs_all "
+        "from item"
+    )
+
+    with _connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            row = cur.fetchone()
+
+    result = {
+        "visible_docs": int(row[0] or 0),
+        "closed_access_docs": int(row[1] or 0),
+        "withdrawn_docs": int(row[2] or 0),
+        "total_docs_all": int(row[3] or 0),
+    }
+    _cache_set(cache_key, result)
+    return result
+
+
 def _orcid_field_id() -> Optional[int]:
     raw = os.getenv("ORCID_FIELD_ID", "")
     if not raw:

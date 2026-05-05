@@ -9,7 +9,7 @@
     <div class="card card-soft h-100">
       <div class="card-body">
         <div class="d-flex align-items-center justify-content-between">
-          <div class="text-secondary small"><i class="bi bi-file-earmark-text"></i> Кількість документів у репозитарії (разом із withdrawn)</div>
+          <div class="text-secondary small"><i class="bi bi-file-earmark-text"></i> Кількість документів у репозитарії</div>
           <span class="badge text-bg-light">live</span>
         </div>
 
@@ -17,6 +17,7 @@
 
         <div class="d-flex gap-2 flex-wrap small mt-2">
           <span class="badge text-bg-light">Опубліковані: <b>{{ data.total_docs|fmt }}</b></span>
+          <span class="badge text-bg-light">Закритий доступ: <b>{{ (data.closed_access_docs or 0)|fmt }}</b></span>
           <span class="badge text-bg-light">Withdrawn: <b>{{ data.withdrawn_docs|fmt }}</b></span>
           <span class="badge text-bg-light">Разом: <b>{{ data.total_docs_all|fmt }}</b></span>
         </div>
