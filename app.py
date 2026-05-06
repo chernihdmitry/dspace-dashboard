@@ -49,6 +49,29 @@ def read_version() -> str:
 APP_VERSION = os.getenv("APP_VERSION") or read_version()
 
 
+class PrefixPathMiddleware:
+    def __init__(self, app, prefixes):
+        self.app = app
+        self.prefixes = []
+        for prefix in prefixes or []:
+            normalized = (prefix or "").strip().rstrip("/")
+            if normalized and normalized not in self.prefixes:
+                self.prefixes.append(normalized)
+
+    def __call__(self, environ, start_response):
+        path_info = environ.get("PATH_INFO") or ""
+        script_name = environ.get("SCRIPT_NAME") or ""
+
+        for prefix in self.prefixes:
+            if path_info == prefix or path_info.startswith(prefix + "/"):
+                environ["PATH_INFO"] = path_info[len(prefix):] or "/"
+                if not script_name:
+                    environ["SCRIPT_NAME"] = prefix
+                break
+
+        return self.app(environ, start_response)
+
+
 def _seo_enabled() -> bool:
     value = os.getenv("GOOGLE_SEARCH_CONSOLE_ENABLED", "false").strip().lower()
     return value in {"1", "true", "yes", "on"}
@@ -83,8 +106,13 @@ def create_app():
     # Secret key for sessions
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", os.urandom(24).hex())
     
-    # чтобы Flask/werkzeug учитывал заголовки от прокси (proto/host/prefix)
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1, x_prefix=1)
+    # Поддерживаем оба варианта reverse proxy:
+    # 1) прокси уже срезает /dspace-dashboard
+    # 2) прокси передаёт /dspace-dashboard дальше в backend как есть
+    app.wsgi_app = PrefixPathMiddleware(
+        ProxyFix(app.wsgi_app, x_proto=1, x_host=1, x_prefix=1),
+        [os.getenv("DASHBOARD_PATH_PREFIX", "/dspace-dashboard")],
+    )
 
     # ---- Auth logging ----
     log_dir = os.path.join(os.path.dirname(__file__), "logs")
