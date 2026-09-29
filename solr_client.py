@@ -129,9 +129,8 @@ def repo_totals():
         "q.op": "AND",
     }
     withdrawn_docs_query = {
-        "q": "archived:true",
+        "q": "withdrawn:true",
         "fq": [
-            "withdrawn:true",
             "-entityType:Person",
         ],
         "rows": 0,
